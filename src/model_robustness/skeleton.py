@@ -24,7 +24,7 @@ import argparse
 import logging
 import sys
 
-from model_robustness import __version__
+# from model_robustness import __version__
 
 __author__ = "julius.lautz"
 __copyright__ = "julius.lautz"
@@ -76,7 +76,7 @@ def parse_args(args):
     parser.add_argument(
         "--version",
         action="version",
-        version=f"model_robustness {__version__}",
+        version=f"model_robustness_0.1",
     )
     parser.add_argument(dest="n", help="n-th Fibonacci number", type=int, metavar="INT")
     parser.add_argument(
@@ -133,6 +133,7 @@ def run():
     This function can be used as entry point to create console scripts with setuptools.
     """
     main(sys.argv[1:])
+    print(sys.argv)
 
 
 if __name__ == "__main__":
