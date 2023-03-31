@@ -106,7 +106,7 @@ def main(args):
     config["seed"] = 42
     config["training::batchsize"] = 64
     config["training::epochs_train"] = 10
-    config["cuda"] = True if torch.cuda.is_available() else False
+    config["cuda"] = "cuda" if torch.cuda.is_available() else "cpu"
 
     data_path = ROOT.joinpath("../data/MNIST")
 
