@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
 import torch.optim as optim
-from advertorch.attacks import GradientSignAttack
+from advertorch.attacks import GradientSignAttack, LinfPGDAttack
 from pathlib import Path
 import numpy as np
 
@@ -107,6 +107,7 @@ def main(args):
     config["training::batchsize"] = 64
     config["training::epochs_train"] = 10
     config["cuda"] = "cuda" if torch.cuda.is_available() else "cpu"
+    config["cuda"] = "cpu"
 
     data_path = ROOT.joinpath("../data/MNIST")
 
@@ -198,7 +199,19 @@ def main(args):
     for cln_data, true_labels in aux_testloader:
         pass
     cln_data, true_labels = cln_data.to(config["cuda"]), true_labels.to(config["cuda"])
-    adversary = GradientSignAttack(net)
+
+    adversary = LinfPGDAttack(
+        net,
+        loss_fn=nn.CrossEntropyLoss(reduction="sum"),
+        eps=0.15,
+        nb_iter=40,
+        eps_iter=0.01,
+        rand_init=True,
+        clip_min=0.0,
+        clip_max=1.0,
+        targeted=False
+    )
+
     adv_untargeted = adversary.perturb(cln_data, true_labels)
     perturbed_data = torch.utils.data.TensorDataset(adv_untargeted, true_labels)
 

@@ -55,7 +55,7 @@ def epoch(mode, config, net, dataloader, optimizer, criterion):
 
         acc = np.sum(np.equal(np.argmax(outputs.data.numpy(), axis=-1), labels.data.numpy()))
 
-        loss_avg += loss.item()*n_b
+        loss_avg += loss.item()
         acc_avg += acc
         num_exp += n_b
 
@@ -97,7 +97,7 @@ def parse_args(args):
     parser = argparse.ArgumentParser(description="MNIST classification")
     parser.add_argument("--optimizer", type=str, default="adam", choices=["adam", "sgd"], help="which optimizer to use")
     parser.add_argument("--criterion", type=str, default="cross", choices=["cross", "nll"], help="which loss function to use")
-    parser.add_argument("--perturbed", type=store)
+    # parser.add_argument("--perturbed", type=store)
     parser.add_argument(
         "-v",
         "--verbose",
@@ -135,8 +135,7 @@ def main(args):
     config = {}
     config["model::type"] = "MLP"
     config["optim::optimizer"] = "adam"
-    config["optim::lr"] = 0.0003
-    config["optim::wd"] = 0.000
+    config["optim::lr"] = 0.01
     config["seed"] = 42
     config["training::batchsize"] = 64
     config["training::epochs_train"] = 10
@@ -202,10 +201,10 @@ def main(args):
         }
         torch.save(dataset, data_path.joinpath("dataset.pt"))
 
-    config["dataset::dump"] = data_path.joinpath("dataset.pt").absolute()
-
-    with open(ROOT.joinpath("config.json"), "w") as f:
-        json.dump(config, f, default=str, indent=4)
+    # config["dataset::dump"] = data_path.joinpath("dataset.pt").absolute()
+    #
+    # with open(ROOT.joinpath("config.json"), "w") as f:
+    #     json.dump(config, f, default=str, indent=4)
 
     trainset = dataset["trainset"]
     testset = dataset["testset"]
@@ -234,7 +233,7 @@ def main(args):
     aux_testloader = DataLoader(dataset=testset, batch_size=len(testset), shuffle=False)
     for cln_data, true_labels in aux_testloader:
         pass
-    adversary = GradientSignAttack(net)
+    adversary = GradientSignAttack(net, loss_fn=nn.CrossEntropyLoss(reduction="sum"), eps=0.15, targeted=False)
     adv_untargeted = adversary.perturb(cln_data, true_labels)
     perturbed_data = torch.utils.data.TensorDataset(adv_untargeted, true_labels)
 
@@ -245,9 +244,9 @@ def main(args):
     )
 
     if args.optimizer == "adam":
-        optimizer = optim.Adam(net.parameters(), lr=config["optim::lr"], weight_decay=config["optim::wd"])
+        optimizer = optim.Adam(net.parameters(), lr=config["optim::lr"])
     elif args.optimizer == "sgd":
-        optimizer = optim.SGD(net.parameters(), lr=config["optim::lr"], weight_decay=config["optim::wd"])
+        optimizer = optim.SGD(net.parameters(), lr=config["optim::lr"])
 
     if args.criterion == "cross":
         criterion = nn.CrossEntropyLoss()
@@ -257,14 +256,13 @@ def main(args):
     # train
     for e in range(config["training::epochs_train"]):
         train_loss, train_acc = epoch("train", config, net, trainloader, optimizer, criterion)
-        print(f"[{e +1}] train loss: {train_loss:.3f}, train accuracy: {train_acc:.3f}")
+        print(f"[{e + 1}] TRAINING \n loss: {train_loss:.3f}, accuracy: {train_acc:.3f}")
 
-        if args.perturbed:
-            print("Testing with perturbed data")
-            test_loss, test_acc = epoch("test", config, net, perturbed_testloader, optimizer, criterion)
-        else:
-            test_loss, test_acc = epoch("test", config, net, testloader, optimizer, criterion)
-        print(f"[{e + 1}] test loss: {test_loss:.3f}, test accuracy: {test_acc:.3f}")
+        test_loss, test_acc = epoch("test", config, net, perturbed_testloader, optimizer, criterion)
+        print(f"[{e + 1}] PERTURBATION \n loss: {test_loss:.3f}, accuracy: {test_acc:.3f}")
+
+        test_loss, test_acc = epoch("test", config, net, testloader, optimizer, criterion)
+        print(f"[{e + 1}] TESTING \n loss: {test_loss:.3f}, accuracy: {test_acc:.3f}")
 
     print("Finished training")
     _logger.info("Script ends here")
