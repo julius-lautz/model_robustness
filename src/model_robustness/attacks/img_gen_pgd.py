@@ -20,6 +20,7 @@ from advertorch.attacks import GradientSignAttack, LinfPGDAttack
 
 from model_robustness.attacks.networks import ConvNetSmall
 
+
 ROOT = Path("")
 
 
@@ -223,19 +224,22 @@ def main():
         "eps_iter": tune.grid_search([2, 4, 8, 16]),
     }
 
+    generate_images_w_resources = tune.with_resources(generate_images, resources_per_trial)
+
     # Tune Experiment
     tuner = tune.Tuner(
-        generate_images,
+        generate_images_w_resources,
         run_config=air.RunConfig(
-            callbacks=[WandbLoggerCallback(project="master_thesis", api_key="7fe80de0b53b0ab265297295a37223f3e9cb1215")]),
+            callbacks=[
+                WandbLoggerCallback(project="master_thesis", api_key="7fe80de0b53b0ab265297295a37223f3e9cb1215")
+            ]),
         tune_config=tune.TuneConfig(num_samples=1),
-        param_space=search_space,
-        resources_per_trial=resources_per_trial
+        param_space=search_space
     )
     results = tuner.fit()
 
-ray.shutdown()
-assert ray.is_initialized == False
+    ray.shutdown()
+    assert ray.is_initialized == False
 
 
 if __name__ == "__main__":
