@@ -44,7 +44,6 @@ def generate_images(tune_config):
 
     dataset
     setup
-    alpha
     nb_iter
     eps_iter
     """
@@ -54,42 +53,44 @@ def generate_images(tune_config):
     config["attack"] = "PGD"
     config["setup"] = tune_config["setup"]
     config["n_models"] = 50
-    config["alpha"] = tune_config["alpha"]
+    config["eps"] = 1
     config["nb_iter"] = calculate_nb_iter(tune_config["eps_iter"])
     config["eps_iter"] = tune_config["eps_iter"]
     config["device"] = "cuda" if torch.cuda.is_available() else "cpu"
 
-    checkpoint_path = os.path.join(ROOT, "../../../../../dtaskiran/zoos")  # path to model zoo checkpoints
-    data_path = os.path.join(ROOT, "../../../../../dtaskiran/zoos")  # path to "dataset"
+    checkpoint_path = os.path.join(ROOT, "/netscratch2/dtaskiran/zoos")  # path to model zoo checkpoints
+    data_path = os.path.join(ROOT, "../data")  # path to "dataset"
 
     if config["dataset"] == "MNIST":
         checkpoint_path = os.path.join(checkpoint_path, "MNIST")
-        data_path = os.path.join(data_path, "MNIST", "sync")
+        data_path = os.path.join(data_path, "MNIST", "dataset.pt")
         if config["setup"] == "hyp-10-r":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_hyperparameter_10_random_seeds")
-            data_path = os.path.join(data_path, "dataset_hyp_rand.pt")
         elif config["setup"] == "hyp-10-f":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(data_path, "dataset_hyp_fix.pt")
 
     if config["dataset"] == "CIFAR10":
         checkpoint_path = os.path.join(checkpoint_path, "CIFAR10", "small")
-        data_path = os.path.join(data_path, "CIFAR10", "small")
+        data_path = os.path.join(data_path, "CIFAR10", "dataset.pt")
         if config["setup"] == "hyp-10-r":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_hyperparameter_10_random_seeds")
-            data_path = os.path.join(data_path, "dataset_hyp_rand.pt")
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_small_hyperparameter_10_random_seeds")
         elif config["setup"] == "hyp-10-f":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(data_path, "dataset_hyp_fix.pt")
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_small_hyperparameter_10_fixed_seeds")
 
-    model_list_path = Path(os.path.join(data_path, config["attack"], config["setup"]))
+    model_list_path = Path(
+        os.path.join(data_path, config["dataset"], config["attack"], config["setup"]))
+
+    try:
+        model_list_path.mkdir(parents="True", exist_ok=False)
+    except FileExistsError:
+        pass
 
     try:
         with open(os.path.join(model_list_path, 'model_list.txt'), "r") as items:
-            model_path = items.readlines()
+            model_paths = items.readlines()
 
-            for i, l in enumerate(model_path):
-                model_path[i] = l.replace("\n", "")
+            for i, l in enumerate(model_paths):
+                model_paths[i] = l.replace("\n", "")
 
     except FileNotFoundError:
         # list to store files
@@ -106,19 +107,20 @@ def generate_images(tune_config):
         model_paths = model_paths[:50]
 
         file = open(os.path.join(model_list_path, 'model_list.txt'), 'w')
-        for item in file:
+        for item in model_paths:
             file.write(item + "\n")
         file.close()
 
     # Load in the data
     dataset = torch.load(data_path)["testset"]
-    if config["dataset"] == "MNIST":
-        assert len(dataset) == 10000
+    assert len(dataset) == 10000
 
     # Define subsets of testset used for each of the n_models models
     generator = torch.Generator().manual_seed(0)
     imgs_per_model = len(dataset) / config["n_models"]
     split = [int(imgs_per_model) for i in range(config["n_models"])]
+    remainder = len(dataset) - sum(split)
+    split[-1] += remainder
 
     subsets = random_split(dataset, split, generator=generator)
 
@@ -201,10 +203,10 @@ def generate_images(tune_config):
 
 def main():
     # ray init to limit memory and storage
-    cpus = 8
+    cpus = 10
     gpus = 0
 
-    cpus_per_trial = 1
+    cpus_per_trial = 10
     gpu_fraction = ((gpus*100) // (cpus/cpus_per_trial)) / 100
     resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpu_fraction}
 
