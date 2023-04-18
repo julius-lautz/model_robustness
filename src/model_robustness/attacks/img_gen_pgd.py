@@ -150,9 +150,20 @@ def generate_images(tune_config):
             dropout=config_model["model::dropout"],
             init_type=config_model["model::init_type"]
         )
-        model.load_state_dict(
-            torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-        )
+        try:
+            model.load_state_dict(
+                torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+            )
+        except RuntimeError:
+            model = ConvNetSmall(
+            channels_in=config_model["model::channels_in"],
+            nlin=config_model["model::nlin"],
+            dropout=0,
+            init_type=config_model["model::init_type"]
+            )
+            model.load_state_dict(
+                torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+            )
         model.to(config["device"])
 
         # Attack
@@ -197,7 +208,7 @@ def generate_images(tune_config):
 
     # Define where the perturbed dataset should be saved
     perturbed_path = Path(
-        os.path.join(model_list_path, f"eps_{config['eps']}")
+        os.path.join(model_list_path, f"eps_{config['eps_iter']}")
     )
     try:
         perturbed_path.mkdir(parents="True", exist_ok=False)
@@ -252,7 +263,6 @@ def main():
     results = tuner.fit()
 
     ray.shutdown()
-    assert ray.is_initialized == False
 
 
 if __name__ == "__main__":

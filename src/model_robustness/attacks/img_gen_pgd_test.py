@@ -158,8 +158,22 @@ def generate_images(tune_config):
             init_type=config_model["model::init_type"]
         )
         model.load_state_dict(
-            torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-        )
+                torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+            )
+        # try:
+        #     model.load_state_dict(
+        #         torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+        #     )
+        # except RuntimeError:
+        #     model = ConvNetSmall(
+        #     channels_in=config_model["model::channels_in"],
+        #     nlin=config_model["model::nlin"],
+        #     dropout=0,
+        #     init_type=config_model["model::init_type"]
+        #     )
+        #     model.load_state_dict(
+        #         torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+        #     )
         model.to(config["device"])
 
         # Attack
