@@ -16,7 +16,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.data.dataset import random_split
 
-from advertorch.attacks import GradientSignAttack, LinfPGDAttack
+from advertorch.attacks import LinfPGDAttack
 
 from model_robustness.attacks.networks import ConvNetSmall
 
@@ -71,6 +71,9 @@ def generate_images(tune_config):
         elif config["setup"] == "hyp-10-f":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_hyperparameter_10_fixed_seeds")
             data_path = os.path.join(data_root, "dataset.pt")
+        elif config["setup"] == "seed":
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_uniform")
+            data_path = os.path.join(data_root, "dataset.pt")
 
     elif config["dataset"] == "CIFAR10":
         checkpoint_path = os.path.join(checkpoint_path, "CIFAR10", "small")
@@ -80,6 +83,9 @@ def generate_images(tune_config):
             data_path = os.path.join(data_root, "dataset.pt")
         elif config["setup"] == "hyp-10-f":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_small_hyperparameter_10_fixed_seeds")
+            data_path = os.path.join(data_root, "dataset.pt")
+        elif config["setup"] == "seed":
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_uniform_small")
             data_path = os.path.join(data_root, "dataset.pt")
 
     # Defining path on where to store the 50 models used to generate perturbed dataset
@@ -244,7 +250,7 @@ def main():
     # Define search space (all experiment configurations)
     search_space = {
         "dataset": tune.grid_search(["MNIST", "CIFAR10"]),
-        "setup": tune.grid_search(["hyp-10-r", "hyp-10-f"]),
+        "setup": tune.grid_search(["hyp-10-r", "hyp-10-f", "seed"]),
         "eps_iter": tune.grid_search([2, 4, 8, 16]),
     }
 
