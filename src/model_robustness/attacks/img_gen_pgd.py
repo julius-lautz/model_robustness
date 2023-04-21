@@ -238,8 +238,6 @@ def main():
     gpu_fraction = ((gpus*100) // (cpus/cpus_per_trial)) / 100
     resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpu_fraction}
 
-    experiment_name = "Projected Gradient Descent - Image Generation"
-
     ray.init(
         num_cpus=cpus,
         num_gpus=gpus
