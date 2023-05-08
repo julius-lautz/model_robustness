@@ -33,57 +33,60 @@ features = pd.DataFrame(0, index=np.arange(len(model_paths)), columns=np.arange(
 
 accs = []
 for j, path in enumerate(model_paths):
-    model_config_path = os.path.join(checkpoint_path, path, "params.json")
-    config_model = json.load(open(model_config_path, ))
+    # model_config_path = os.path.join(checkpoint_path, path, "params.json")
+    # config_model = json.load(open(model_config_path, ))
 
-    d = torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-    aux = np.array([])
-    for i, key in enumerate(d):
-        if i % 2 == 0:
-            if i == 0:
-                aux = d[key].numpy().flatten()
-            else:
-                np.append(aux, d[key].numpy().flatten())
+    # d = torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+    # aux = np.array([])
+    # for i, key in enumerate(d):
+    #     if i % 2 == 0:
+    #         if i == 0:
+    #             aux = d[key].numpy().flatten()
+    #         else:
+    #             np.append(aux, d[key].numpy().flatten())
 
-    features.loc[j] = aux
+    # features.loc[j] = aux
 
-    # result_model_path = os.path.join(checkpoint_path, path, "result.json")
-    # c = 0
-    # for line in open(result_model_path, 'r'):
-    #     c += 1
-    #     if c == 50:
-    #         index = line.index("test_acc")
-    #         accs.append(eval(line[index+11:index+16]))
+    result_model_path = os.path.join(checkpoint_path, path, "result.json")
+    c = 0
+    for line in open(result_model_path, 'r'):
+        c += 1
+        if c == 50:
+            index = line.index("test_loss")
+            # accs.append(eval(line[index+11:index+16]))
+            print(eval(line[index+12:index+17]))
+            break
+    break
 
-# visualize with t-SNE
-tsne = TSNE(n_components=2).fit_transform(features)
-
-
-# scale and move the coordinates so they fit [0; 1] range
-def scale_to_01_range(x):
-    # compute the distribution range
-    value_range = (np.max(x) - np.min(x))
-
-    # move the distribution so that it starts from zero
-    # by extracting the minimal value from all its values
-    starts_from_zero = x - np.min(x)
-
-    # make the distribution fit [0; 1] by dividing by its range
-    return starts_from_zero / value_range
+# # visualize with t-SNE
+# tsne = TSNE(n_components=2).fit_transform(features)
 
 
-# extract x and y coordinates representing the positions of the images on T-SNE plot
-tx = tsne[:, 0]
-ty = tsne[:, 1]
+# # scale and move the coordinates so they fit [0; 1] range
+# def scale_to_01_range(x):
+#     # compute the distribution range
+#     value_range = (np.max(x) - np.min(x))
 
-tx = scale_to_01_range(tx)
-ty = scale_to_01_range(ty)
-# initialize a matplotlib plot
-fig = plt.figure()
-ax = fig.add_subplot(111)
+#     # move the distribution so that it starts from zero
+#     # by extracting the minimal value from all its values
+#     starts_from_zero = x - np.min(x)
 
-ax.scatter(tx, ty)
+#     # make the distribution fit [0; 1] by dividing by its range
+#     return starts_from_zero / value_range
 
-# finally, save the plot
-plt.savefig("tsne_output_random_cifar.png")
-plt.show()
+
+# # extract x and y coordinates representing the positions of the images on T-SNE plot
+# tx = tsne[:, 0]
+# ty = tsne[:, 1]
+
+# tx = scale_to_01_range(tx)
+# ty = scale_to_01_range(ty)
+# # initialize a matplotlib plot
+# fig = plt.figure()
+# ax = fig.add_subplot(111)
+
+# ax.scatter(tx, ty)
+
+# # finally, save the plot
+# plt.savefig("tsne_output_random_cifar.png")
+# plt.show()

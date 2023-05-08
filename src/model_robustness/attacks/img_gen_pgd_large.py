@@ -16,9 +16,9 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.data.dataset import random_split
 
-from advertorch.attacks import GradientSignAttack, LinfPGDAttack
+from advertorch.attacks import LinfPGDAttack
 
-from model_robustness.attacks.networks import ConvNetSmall
+from model_robustness.attacks.networks import ConvNetLarge
 
 
 ROOT = Path("")
@@ -71,16 +71,35 @@ def generate_images(tune_config):
         elif config["setup"] == "hyp-10-f":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_hyperparameter_10_fixed_seeds")
             data_path = os.path.join(data_root, "dataset.pt")
+        elif config["setup"] == "seed":
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_uniform")
+            data_path = os.path.join(data_root, "dataset.pt")
 
     elif config["dataset"] == "CIFAR10":
-        checkpoint_path = os.path.join(checkpoint_path, "CIFAR10", "small")
-        data_root = os.path.join(data_root, "CIFAR10")
+        checkpoint_path = os.path.join(checkpoint_path, "CIFAR10", "large")
+        data_root = os.path.join(data_root, "CIFAR10", "large")
         if config["setup"] == "hyp-10-r":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_small_hyperparameter_10_random_seeds")
-            data_path = os.path.join(data_root, "dataset.pt")
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_large_hyperparameter_10_random_seeds")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
         elif config["setup"] == "hyp-10-f":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_small_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(data_root, "dataset.pt")
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_large_hyperparameter_10_fixed_seeds")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
+        elif config["setup"] == "seed":
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_uniform_large")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
+
+    elif config["dataset"] == "SVHN":
+        checkpoint_path = os.path.join(checkpoint_path, "SVHN")
+        data_root = os.path.join(data_root, "SVHN")
+        if config["setup"] == "hyp-10-r":
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_hyperparameter_10_random_seeds")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
+        elif config["setup"] == "hyp-10-f":
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_hyperparameter_10_fixed_seeds")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
+        elif config["setup"] == "seed":
+            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_uniform")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
 
     # Defining path on where to store the 50 models used to generate perturbed dataset
     model_list_path = Path(
@@ -90,9 +109,6 @@ def generate_images(tune_config):
         model_list_path.mkdir(parents="True", exist_ok=False)
     except FileExistsError:
         pass
-    print(f"Checkpoint Path: {checkpoint_path}")
-    print(f"Data Path: {data_path}")
-    print(f"Model List Path: {model_list_path}")
 
     # See if the list already exists, otherwise create it
     try:
@@ -101,10 +117,8 @@ def generate_images(tune_config):
 
             for i, l in enumerate(model_paths):
                 model_paths[i] = l.replace("\n", "")
-        print("Model list already exists.")
 
     except FileNotFoundError:
-        print("Model list does not exist yet, defining it now.")
         # list to store files
         model_paths = []
 
@@ -125,8 +139,6 @@ def generate_images(tune_config):
 
     # Load in the data
     dataset = torch.load(data_path)["testset"]
-    assert len(dataset) == 10000
-    print("Dataset successfully loaded.")
 
     # Define subsets of testset used for each of the n_models models
     generator = torch.Generator().manual_seed(0)
@@ -143,7 +155,6 @@ def generate_images(tune_config):
     labels = torch.tensor((), device=config["device"])
 
     # Iterate over the n_models models and generate imgs_per_model images for each one
-    print(f"Starting iteration over the {config['n_models']} models.")
     for i, path in enumerate(model_paths):
 
         # Read in config containing the paramters for the i-th model
@@ -151,29 +162,34 @@ def generate_images(tune_config):
         config_model = json.load(open(model_config_path, ))
 
         # Define model and load in state
-        model = ConvNetSmall(
+        model = ConvNetLarge(
             channels_in=config_model["model::channels_in"],
             nlin=config_model["model::nlin"],
             dropout=config_model["model::dropout"],
             init_type=config_model["model::init_type"]
         )
-        model.load_state_dict(
+        try:
+            model.load_state_dict(
                 torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
             )
-        # try:
-        #     model.load_state_dict(
-        #         torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-        #     )
-        # except RuntimeError:
-        #     model = ConvNetSmall(
-        #     channels_in=config_model["model::channels_in"],
-        #     nlin=config_model["model::nlin"],
-        #     dropout=0,
-        #     init_type=config_model["model::init_type"]
-        #     )
-        #     model.load_state_dict(
-        #         torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-        #     )
+        except RuntimeError:
+            model = ConvNetLarge(
+            channels_in=config_model["model::channels_in"],
+            nlin=config_model["model::nlin"],
+            dropout=0,
+            init_type=config_model["model::init_type"]
+            )
+            try:
+                model.load_state_dict(
+                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+                )
+            except RuntimeError:
+                model = ConvNetLarge(
+                channels_in=config_model["model::channels_in"],
+                nlin=config_model["model::nlin"],
+                dropout=0.5,
+                init_type=config_model["model::init_type"]
+                )
         model.to(config["device"])
 
         # Attack
@@ -210,24 +226,22 @@ def generate_images(tune_config):
         images = torch.cat((images, adv_images))
         labels = torch.cat((labels, true_labels))
 
-        assert len(images) == (i + 1) * imgs_per_model
-        assert len(labels) == (i + 1) * imgs_per_model
-        print(f"Model {i+1} done.")
     # Save entire dataset
     perturbed_dataset = TensorDataset(images, labels)
 
     # Define where the perturbed dataset should be saved
     perturbed_path = Path(
-        os.path.join(model_list_path, f"eps_{config['eps']}")
+        os.path.join(model_list_path, f"eps_{config['eps_iter']}")
     )
     try:
         perturbed_path.mkdir(parents="True", exist_ok=False)
     except FileExistsError:
         pass
+    
+    assert len(perturbed_dataset) == len(dataset)
 
     # Save the perturbed dataset
     torch.save(perturbed_dataset, os.path.join(perturbed_path, "perturbed_dataset.pt"))
-    print("Perturbed dataset successfully saved.")
 
     # Save config with parameters
     with open((perturbed_path.joinpath("config.json")), "w") as f:
@@ -235,13 +249,43 @@ def generate_images(tune_config):
 
 
 def main():
-    tune_config = {
-        "dataset": "MNIST",
-        "setup": "hyp-10-r",
-        "eps_iter": 2
+    # ray init to limit memory and storage
+    cpus = 10
+    gpus = 0
+
+    cpus_per_trial = 10
+    gpu_fraction = ((gpus*100) // (cpus/cpus_per_trial)) / 100
+    resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpu_fraction}
+
+    ray.init(
+        num_cpus=cpus,
+        num_gpus=gpus
+    )
+
+    assert ray.is_initialized() == True
+
+    # Define search space (all experiment configurations)
+    search_space = {
+        "dataset": tune.grid_search(["CIFAR10"]),
+        "setup": tune.grid_search(["hyp-10-f", "hyp-10-r", "seed"]),
+        "eps_iter": tune.grid_search([2, 4, 8, 16]),
     }
 
-    generate_images(tune_config=tune_config)
+    generate_images_w_resources = tune.with_resources(generate_images, resources_per_trial)
+
+    # Tune Experiment
+    tuner = tune.Tuner(
+        generate_images_w_resources,
+        # run_config=air.RunConfig(
+        #     callbacks=[
+        #         WandbLoggerCallback(project="master_thesis", api_key="7fe80de0b53b0ab265297295a37223f3e9cb1215")
+        #     ]),
+        tune_config=tune.TuneConfig(num_samples=1),
+        param_space=search_space
+    )
+    results = tuner.fit()
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

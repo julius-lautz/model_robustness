@@ -16,20 +16,16 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.data.dataset import random_split
 
-from advertorch.attacks import LinfPGDAttack
+from advertorch.attacks import GradientSignAttack
 
-from model_robustness.attacks.networks import ConvNetSmall
+from model_robustness.attacks.networks import ConvNetLarge
 
 
 ROOT = Path("")
 
 
-# def calculate_nb_iter(eps_iter):
-#     return int(np.ceil(min(4+eps_iter, 1.25*eps_iter)))
-
-
 def parse_args(args):
-    parser = argparse.ArgumentParser(description="Generates images for PGD attack")
+    parser = argparse.ArgumentParser(description="Generates images for FGSM attack")
 
     return parser.parse_args(args)
 
@@ -44,17 +40,16 @@ def generate_images(tune_config):
 
     dataset
     setup
-    eps
+    nb_iter
+    eps_iter
     """
 
     config = {}
     config["dataset"] = tune_config["dataset"]
-    config["attack"] = "PGD"
+    config["attack"] = "FGSM"
     config["setup"] = tune_config["setup"]
     config["n_models"] = 50
     config["eps"] = tune_config["eps"]
-    config["nb_iter"] = 10
-    config["eps_iter"] = tune_config["eps"]/10
     config["device"] = "cuda" if torch.cuda.is_available() else "cpu"
 
     checkpoint_path = os.path.join(ROOT, "/netscratch2/dtaskiran/zoos")  # path to model zoo checkpoints
@@ -79,25 +74,12 @@ def generate_images(tune_config):
         data_root = os.path.join(data_root, "CIFAR10")
         if config["setup"] == "hyp-10-r":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_large_hyperparameter_10_random_seeds")
-            data_path = os.path.join(data_root, "dataset.pt")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
         elif config["setup"] == "hyp-10-f":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_large_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(data_root, "dataset.pt")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
         elif config["setup"] == "seed":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_uniform_large")
-            data_path = os.path.join(data_root, "dataset.pt")
-
-    elif config["dataset"] == "SVHN":
-        checkpoint_path = os.path.join(checkpoint_path, "SVHN")
-        data_root = os.path.join(data_root, "SVHN")
-        if config["setup"] == "hyp-10-r":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_hyperparameter_10_random_seeds")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-        elif config["setup"] == "hyp-10-f":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-        elif config["setup"] == "seed":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_uniform")
             data_path = os.path.join(checkpoint_path, "dataset.pt")
 
     # Defining path on where to store the 50 models used to generate perturbed dataset
@@ -138,6 +120,7 @@ def generate_images(tune_config):
 
     # Load in the data
     dataset = torch.load(data_path)["testset"]
+    assert len(dataset) == 10000
 
     # Define subsets of testset used for each of the n_models models
     generator = torch.Generator().manual_seed(0)
@@ -160,60 +143,27 @@ def generate_images(tune_config):
         model_config_path = os.path.join(checkpoint_path, path, "params.json")
         config_model = json.load(open(model_config_path, ))
 
-        # For CIFAR10 use large ConvNet, small ConvNet for everything else
-        if config["dataset"] == "CIFAR10":
-            # Define model and load in state
-            model = ConvNetLarge(
-                channels_in=config_model["model::channels_in"],
-                nlin=config_model["model::nlin"],
-                dropout=config_model["model::dropout"],
-                init_type=config_model["model::init_type"]
-            )
-            try:
-                model.load_state_dict(
-                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-                )
-            except RuntimeError:
-                model = ConvNetLarge(
-                channels_in=config_model["model::channels_in"],
-                nlin=config_model["model::nlin"],
-                dropout=0,
-                init_type=config_model["model::init_type"]
-                )
-                try:
-                    model.load_state_dict(
-                        torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-                    )
-                except RuntimeError:
-                    model = ConvNetLarge(
-                    channels_in=config_model["model::channels_in"],
-                    nlin=config_model["model::nlin"],
-                    dropout=0.5,
-                    init_type=config_model["model::init_type"]
-                    )
-        
-        else:
-            # Define model and load in state
-            model = ConvNetSmall(
-                channels_in=config_model["model::channels_in"],
-                nlin=config_model["model::nlin"],
-                dropout=config_model["model::dropout"],
-                init_type=config_model["model::init_type"]
-            )
-            try:
-                model.load_state_dict(
-                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-                )
-            except RuntimeError:
-                model = ConvNetSmall(
-                channels_in=config_model["model::channels_in"],
-                nlin=config_model["model::nlin"],
-                dropout=0,
-                init_type=config_model["model::init_type"]
-                )
-                model.load_state_dict(
-                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-                )
+        # Define model and load in state
+        model = ConvNetLarge(
+            channels_in=config_model["model::channels_in"],
+            nlin=config_model["model::nlin"],
+            dropout=config_model["model::dropout"],
+            init_type=config_model["model::init_type"]
+        )
+        # try:
+        #     model.load_state_dict(
+        #         torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+        #     )
+        # except RuntimeError:
+        #     model = ConvNetSmall(
+        #     channels_in=config_model["model::channels_in"],
+        #     nlin=config_model["model::nlin"],
+        #     dropout=0,
+        #     init_type=config_model["model::init_type"]
+        #     )
+        #     model.load_state_dict(
+        #         torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+        #     )
         model.to(config["device"])
 
         # Attack
@@ -227,16 +177,11 @@ def generate_images(tune_config):
             break
         cln_data, true_labels = cln_data.to(config["device"]), true_labels.to(config["device"])
 
-        if config["attack"] == "PGD":
-            adversary = LinfPGDAttack(
+        if config["attack"] == "FGSM":
+            adversary = GradientSignAttack(
                 model,
                 loss_fn=nn.CrossEntropyLoss(reduction="sum"),
-                eps=config["eps"],
-                nb_iter=config["nb_iter"],
-                eps_iter=config["eps_iter"],
-                rand_init=False,
-                clip_min=0.0,
-                clip_max=1.0,
+                eps=config["eps"] / 255,
                 targeted=False
             )
 
@@ -250,19 +195,20 @@ def generate_images(tune_config):
         images = torch.cat((images, adv_images))
         labels = torch.cat((labels, true_labels))
 
+        assert len(images) == (i + 1) * imgs_per_model
+        assert len(labels) == (i + 1) * imgs_per_model
+
     # Save entire dataset
     perturbed_dataset = TensorDataset(images, labels)
 
     # Define where the perturbed dataset should be saved
     perturbed_path = Path(
-        os.path.join(model_list_path, f"eps_{config['eps_iter']}")
+        os.path.join(model_list_path, f"eps_{config['eps']}")
     )
     try:
         perturbed_path.mkdir(parents="True", exist_ok=False)
     except FileExistsError:
         pass
-    
-    assert len(perturbed_dataset) == len(dataset)
 
     # Save the perturbed dataset
     torch.save(perturbed_dataset, os.path.join(perturbed_path, "perturbed_dataset.pt"))
@@ -290,9 +236,9 @@ def main():
 
     # Define search space (all experiment configurations)
     search_space = {
-        "dataset": tune.grid_search(["SVHN"]),
-        "setup": tune.grid_search(["hyp-10-f", "seed"]),
-        "eps_iter": tune.grid_search([2, 4, 8, 16]),
+        "dataset": tune.grid_search(["MNIST", "CIFAR10"]),
+        "setup": tune.grid_search(["hyp-10-r", "hyp-10-f", "seed"]),
+        "eps": tune.grid_search([0.1, 0.2, 0.3, 0.4, 0.5]),
     }
 
     generate_images_w_resources = tune.with_resources(generate_images, resources_per_trial)
@@ -300,10 +246,10 @@ def main():
     # Tune Experiment
     tuner = tune.Tuner(
         generate_images_w_resources,
-        # run_config=air.RunConfig(
-        #     callbacks=[
-        #         WandbLoggerCallback(project="master_thesis", api_key="7fe80de0b53b0ab265297295a37223f3e9cb1215")
-        #     ]),
+        run_config=air.RunConfig(
+            callbacks=[
+                WandbLoggerCallback(project="master_thesis", api_key="7fe80de0b53b0ab265297295a37223f3e9cb1215")
+            ]),
         tune_config=tune.TuneConfig(num_samples=1),
         param_space=search_space
     )
