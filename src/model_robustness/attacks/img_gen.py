@@ -16,9 +16,9 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.data.dataset import random_split
 
-from advertorch.attacks import LinfPGDAttack
+from advertorch.attacks import LinfPGDAttack, GradientSignAttack
 
-from model_robustness.attacks.networks import ConvNetSmall
+from model_robustness.attacks.networks import ConvNetSmall, ConvNetLarge
 
 
 ROOT = Path("")
@@ -49,7 +49,7 @@ def generate_images(tune_config):
 
     config = {}
     config["dataset"] = tune_config["dataset"]
-    config["attack"] = "PGD"
+    config["attack"] = tune_config["attack"]
     config["setup"] = tune_config["setup"]
     config["n_models"] = 50
     config["eps"] = tune_config["eps"]
@@ -66,26 +66,26 @@ def generate_images(tune_config):
         data_root = os.path.join(data_root, "MNIST")
         if config["setup"] == "hyp-10-r":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_hyperparameter_10_random_seeds")
-            data_path = os.path.join(data_root, "dataset.pt")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
         elif config["setup"] == "hyp-10-f":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(data_root, "dataset.pt")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
         elif config["setup"] == "seed":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_uniform")
-            data_path = os.path.join(data_root, "dataset.pt")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
 
     elif config["dataset"] == "CIFAR10":
         checkpoint_path = os.path.join(checkpoint_path, "CIFAR10", "large")
-        data_root = os.path.join(data_root, "CIFAR10")
+        data_root = os.path.join(data_root, "CIFAR10", "large")
         if config["setup"] == "hyp-10-r":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_large_hyperparameter_10_random_seeds")
-            data_path = os.path.join(data_root, "dataset.pt")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
         elif config["setup"] == "hyp-10-f":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_large_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(data_root, "dataset.pt")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
         elif config["setup"] == "seed":
             checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_uniform_large")
-            data_path = os.path.join(data_root, "dataset.pt")
+            data_path = os.path.join(checkpoint_path, "dataset.pt")
 
     elif config["dataset"] == "SVHN":
         checkpoint_path = os.path.join(checkpoint_path, "SVHN")
@@ -175,10 +175,10 @@ def generate_images(tune_config):
                 )
             except RuntimeError:
                 model = ConvNetLarge(
-                channels_in=config_model["model::channels_in"],
-                nlin=config_model["model::nlin"],
-                dropout=0,
-                init_type=config_model["model::init_type"]
+                    channels_in=config_model["model::channels_in"],
+                    nlin=config_model["model::nlin"],
+                    dropout=0,
+                    init_type=config_model["model::init_type"]
                 )
                 try:
                     model.load_state_dict(
@@ -186,10 +186,13 @@ def generate_images(tune_config):
                     )
                 except RuntimeError:
                     model = ConvNetLarge(
-                    channels_in=config_model["model::channels_in"],
-                    nlin=config_model["model::nlin"],
-                    dropout=0.5,
-                    init_type=config_model["model::init_type"]
+                        channels_in=config_model["model::channels_in"],
+                        nlin=config_model["model::nlin"],
+                        dropout=0.5,
+                        init_type=config_model["model::init_type"]
+                    )
+                    model.load_state_dict(
+                        torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
                     )
         
         else:
@@ -206,10 +209,10 @@ def generate_images(tune_config):
                 )
             except RuntimeError:
                 model = ConvNetSmall(
-                channels_in=config_model["model::channels_in"],
-                nlin=config_model["model::nlin"],
-                dropout=0,
-                init_type=config_model["model::init_type"]
+                    channels_in=config_model["model::channels_in"],
+                    nlin=config_model["model::nlin"],
+                    dropout=0,
+                    init_type=config_model["model::init_type"]
                 )
                 model.load_state_dict(
                     torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
@@ -239,7 +242,13 @@ def generate_images(tune_config):
                 clip_max=1.0,
                 targeted=False
             )
-
+        elif config["attack"] == "FGSM":
+            adversary = GradientSignAttack(
+                model,
+                loss_fn=nn.CrossEntropyLoss(reduction="sum"),
+                eps=tune_config["eps"],
+                targeted=False
+            )
         else:
             raise NotImplementedError("error: attack type unknown")
 
@@ -255,7 +264,7 @@ def generate_images(tune_config):
 
     # Define where the perturbed dataset should be saved
     perturbed_path = Path(
-        os.path.join(model_list_path, f"eps_{config['eps_iter']}")
+        os.path.join(model_list_path, f"eps_{config['eps']}")
     )
     try:
         perturbed_path.mkdir(parents="True", exist_ok=False)
@@ -290,9 +299,10 @@ def main():
 
     # Define search space (all experiment configurations)
     search_space = {
-        "dataset": tune.grid_search(["SVHN"]),
-        "setup": tune.grid_search(["hyp-10-f", "seed"]),
-        "eps_iter": tune.grid_search([2, 4, 8, 16]),
+        "dataset": tune.grid_search(["MNIST", "CIFAR10", "SVHN"]),
+        "attack": tune.grid_search(["PGD", "FGSM"]),
+        "setup": tune.grid_search(["hyp-10-r", "hyp-10-f", "seed"]),
+        "eps": tune.grid_search([0.1, 0.2, 0.3, 0.4, 0.5]),
     }
 
     generate_images_w_resources = tune.with_resources(generate_images, resources_per_trial)
