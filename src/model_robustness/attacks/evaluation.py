@@ -18,7 +18,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.data.dataset import random_split
 
-from model_robustness.attacks.networks import ConvNetSmall
+from model_robustness.attacks.networks import ConvNetSmall, ConvNetLarge
 
 ROOT = Path("")
 
