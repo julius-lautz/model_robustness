@@ -10,42 +10,18 @@ ROOT = Path("")
 
 def add_results_to_df(tune_config):
 
-    results_root = os.path.join(ROOT, "/netscratch2/jlautz/model_robustness/src/model_robustness/data")
-    parameter_path = os.path.join(ROOT, "/netscratch2/dtaskiran/zoos") 
+    results_root = os.path.join(ROOT, "/netscratch2/jlautz/model_robustness/src/model_robustness/data/resnet")
+    results_root = Path(
+            os.path.join(results_root, tune_config["dataset"], tune_config["attack"], f"eps_{tune_config['eps']}", "results")
+        )
 
-    if tune_config["dataset"] == "MNIST":
-        parameter_path = os.path.join(parameter_path, "MNIST")
-        if tune_config["setup"] == "hyp-10-r":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_mnist_hyperparameter_10_random_seeds")
-        elif tune_config["setup"] == "hyp-10-f":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_mnist_hyperparameter_10_fixed_seeds")
-        elif tune_config["setup"] == "seed":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_mnist_uniform")
-
-    elif tune_config["dataset"] == "CIFAR10":
-        parameter_path = os.path.join(parameter_path, "CIFAR10", "large")
-        if tune_config["setup"] == "hyp-10-r":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_cifar10_large_hyperparameter_10_random_seeds")
-        elif tune_config["setup"] == "hyp-10-f":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_cifar10_large_hyperparameter_10_fixed_seeds")
-        elif tune_config["setup"] == "seed":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_cifar10_uniform_large")
-
-    elif tune_config["dataset"] == "SVHN":
-        parameter_path = os.path.join(parameter_path, "SVHN")
-        if tune_config["setup"] == "hyp-10-r":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_svhn_hyperparameter_10_random_seeds")
-        elif tune_config["setup"] == "hyp-10-f":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_svhn_hyperparameter_10_fixed_seeds")
-        elif tune_config["setup"] == "seed":
-            parameter_path = os.path.join(parameter_path, "tune_zoo_svhn_uniform")
-    
+    # path to model zoo parameters
     if tune_config["dataset"] == "CIFAR10":
-        results_root = os.path.join(results_root, tune_config["dataset"], "large", tune_config["attack"], tune_config["setup"],
-            f"eps_{tune_config['eps']}", "results")
+        parameter_path = os.path.join(
+            ROOT, f"/ds2/model_zoos/zoos_resnet/zoos/CIFAR10/resnet19/kaiming_uniform/tune_zoo_cifar10_resnet18_kaiming_uniform")  
     else:
-        results_root = os.path.join(results_root, tune_config["dataset"], tune_config["attack"], tune_config["setup"],
-            f"eps_{tune_config['eps']}", "results")
+        parameter_path = os.path.join(
+            ROOT, f"/ds2/model_zoos/zoos_resnet/zoos/{tune_config['dataset']}/resnet18/kaiming_uniform/tune_zoo_{tune_config['dataset'].lower()}_resnet18_kaiming_uniform")  
 
     # Get all model names
     model_paths = []
@@ -54,7 +30,7 @@ def add_results_to_df(tune_config):
             model_paths.append(path)
 
     # Instantiate empty dataframe
-    df = pd.DataFrame(columns=["name", "dataset", "attack", "setup", "eps", "dropout", 
+    df = pd.DataFrame(columns=["name", "dataset", "attack", "eps", "dropout", 
                                 "init_type", "nlin", "lr", "momentum", "optimizer", "wd", "seed",
                                 "old_loss", "old_acc", "new_loss", "new_acc"])
 
@@ -68,7 +44,6 @@ def add_results_to_df(tune_config):
         df.loc[i, "name"] = path
         df.loc[i, "dataset"] = tune_config["dataset"]
         df.loc[i, "attack"] = tune_config["attack"]
-        df.loc[i, "setup"] = tune_config["setup"]
         df.loc[i, "eps"] = tune_config["eps"]
         df.loc[i, "dropout"] = config_model["model::dropout"]
         df.loc[i, "init_type"] = config_model["model::init_type"]
@@ -107,19 +82,31 @@ def add_results_to_df(tune_config):
 
 
 def main():
-    ray.init()
+    cpus = 6
+    gpus = 1
+
+    cpus_per_trial = 3
+    gpu_fraction = ((gpus*100) // (cpus/cpus_per_trial)) / 100
+    resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpu_fraction}
+
+    ray.init(
+        num_cpus=cpus,
+        num_gpus=gpus
+    )
 
     assert ray.is_initialized() == True
 
+    # Define search space (all experiment configurations)
     search_space = {
-        "dataset": tune.grid_search(["SVHN"]),
+        "dataset": tune.grid_search(["CIFAR10", "CIFAR100", "TinyImageNet"]),
         "attack": tune.grid_search(["PGD", "FGSM"]),
-        "setup": tune.grid_search(["hyp-10-f", "hyp-10-r", "seed"]),
         "eps": tune.grid_search([0.1, 0.2, 0.3, 0.4, 0.5]),
     }
 
+    add_results_w_resources = tune.with_resources(add_results_to_df, resources_per_trial)
+
     tuner = tune.Tuner(
-        add_results_to_df,
+        add_results_w_resources,
         tune_config=tune.TuneConfig(num_samples=1),
         param_space=search_space
     )

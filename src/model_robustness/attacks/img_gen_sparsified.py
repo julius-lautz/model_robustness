@@ -18,20 +18,32 @@ from torch.utils.data.dataset import random_split
 
 from advertorch.attacks import LinfPGDAttack, GradientSignAttack
 
-from model_robustness.attacks.networks import ConvNetSmall, ConvNetLarge
+from networks import CNN_ARD
+
 
 
 ROOT = Path("")
-
-
-# def calculate_nb_iter(eps_iter):
-#     return int(np.ceil(min(4+eps_iter, 1.25*eps_iter)))
 
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Generates images for PGD attack")
 
     return parser.parse_args(args)
+
+def return_names_for_path(dataset, setup):
+    if dataset=="CIFAR10":
+        size = "large"
+    else:
+        size = "small"
+    
+    if setup == "seed":
+        zoo_p = f"cnn_{size}_{dataset.lower()}_ard"
+    elif setup == "hyp-10-f":
+        zoo_p = f"cnn_{size}_{dataset.lower()}_fixed_ard"
+    else: 
+        zoo_p = f"cnn_{size}_{dataset.lower()}_rand_ard"
+
+    return zoo_p
 
 
 # Define each experiment
@@ -57,52 +69,17 @@ def generate_images(tune_config):
     config["eps_iter"] = tune_config["eps"]/10
     config["device"] = "cuda" if torch.cuda.is_available() else "cpu"
 
-    checkpoint_path = os.path.join(ROOT, "/netscratch2/dtaskiran/zoos")  # path to model zoo checkpoints
-    data_root = os.path.join(ROOT, "/netscratch2/jlautz/model_robustness/src/model_robustness/data")  # path to "dataset"
+    # path to model zoo checkpoints
+    zoo_p = return_names_for_path(config["dataset"], config["setup"])
+    checkpoint_path = os.path.join(ROOT, f"/ds2/model_zoos/zoos_sparsified/distillation/zoos/{config['dataset']}/ARD/{zoo_p}")
 
-    # Defining data_path and checkpoint_path depending on configuration
-    if config["dataset"] == "MNIST":
-        checkpoint_path = os.path.join(checkpoint_path, "MNIST")
-        data_root = os.path.join(data_root, "MNIST")
-        if config["setup"] == "hyp-10-r":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_hyperparameter_10_random_seeds")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-        elif config["setup"] == "hyp-10-f":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-        elif config["setup"] == "seed":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_mnist_uniform")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-
-    elif config["dataset"] == "CIFAR10":
-        checkpoint_path = os.path.join(checkpoint_path, "CIFAR10", "large")
-        data_root = os.path.join(data_root, "CIFAR10", "large")
-        if config["setup"] == "hyp-10-r":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_large_hyperparameter_10_random_seeds")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-        elif config["setup"] == "hyp-10-f":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_large_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-        elif config["setup"] == "seed":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_cifar10_uniform_large")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-
-    elif config["dataset"] == "SVHN":
-        checkpoint_path = os.path.join(checkpoint_path, "SVHN")
-        data_root = os.path.join(data_root, "SVHN")
-        if config["setup"] == "hyp-10-r":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_hyperparameter_10_random_seeds")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-        elif config["setup"] == "hyp-10-f":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_hyperparameter_10_fixed_seeds")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
-        elif config["setup"] == "seed":
-            checkpoint_path = os.path.join(checkpoint_path, "tune_zoo_svhn_uniform")
-            data_path = os.path.join(checkpoint_path, "dataset.pt")
+    # path to "dataset"
+    data_path = os.path.join(checkpoint_path, "dataset.pt")  
+    data_root = os.path.join(ROOT, "/netscratch2/jlautz/model_robustness/src/model_robustness/data/sparsified")
 
     # Defining path on where to store the 50 models used to generate perturbed dataset
     model_list_path = Path(
-        os.path.join(data_root, config["attack"], config["setup"]))
+        os.path.join(data_root, config["dataset"], config["attack"], config["setup"]))
 
     try:
         model_list_path.mkdir(parents="True", exist_ok=False)
@@ -116,20 +93,41 @@ def generate_images(tune_config):
 
             for i, l in enumerate(model_paths):
                 model_paths[i] = l.replace("\n", "")
+        print("Model_list already existed")
 
     except FileNotFoundError:
-        # list to store files
-        model_paths = []
+        # Only getting models from zoo that have no error
+        try:
+            zoo_model_list_path = os.path.join(data_root, config["dataset"])
+            with open(os.path.join(zoo_model_list_path, "all_models.txt"), "r") as items:
+                zoo_model_list = items.readlines()
 
-        # Iterate directory
-        for path in os.listdir(checkpoint_path):
-            # only append directories
-            if not os.path.isfile(os.path.join(checkpoint_path, path)):
-                model_paths.append(path)
+                for i, l in enumerate(zoo_model_list):
+                    zoo_model_list[i] = l.replace("\n", "")
+            
+            print("list with all models already exists")
+
+        
+        except FileNotFoundError:
+            print("getting all models without error from zoo")
+            zoo_model_list = []
+            # Iterate directory
+            for a, path in enumerate(os.listdir(checkpoint_path)):
+                # only append directories
+                if not os.path.isfile(os.path.join(checkpoint_path, path)):
+                    if os.path.exists(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints")):
+                        zoo_model_list.append(path)
+                if a % 100==0:
+                    print(f"iterated through {a} models")
+            
+            file = open(os.path.join(data_root, config["dataset"], "all_models.txt"), "w")
+            for item in zoo_model_list:
+                file.write(item + "\n")
+            file.close()
 
         # Only take the top 50 models
-        random.shuffle(model_paths)
-        model_paths = model_paths[:50]
+        random.shuffle(zoo_model_list)
+        model_paths = zoo_model_list[:50]
 
         file = open(os.path.join(model_list_path, 'model_list.txt'), 'w')
         for item in model_paths:
@@ -155,15 +153,28 @@ def generate_images(tune_config):
 
     # Iterate over the n_models models and generate imgs_per_model images for each one
     for i, path in enumerate(model_paths):
+        
+        # # Make sure the path to the model exists
+        # if os.path.exists(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints")):
+        #     pass
+        # else:
+        #     path = model_paths[i+1]
 
         # Read in config containing the paramters for the i-th model
         model_config_path = os.path.join(checkpoint_path, path, "params.json")
         config_model = json.load(open(model_config_path, ))
 
+        # # Some models don't have 50 checkpoints, so check that we always take the last available one
+        # checkpoints = []
+        # for p in os.listdir(os.path.join(checkpoint_path, path)):
+        #     if p.startswith("checkpoint"):
+        #         checkpoints.append(p)
+        # checkpoints.sort()
+
         # For CIFAR10 use large ConvNet, small ConvNet for everything else
         if config["dataset"] == "CIFAR10":
             # Define model and load in state
-            model = ConvNetLarge(
+            model = CNN_ARD(
                 channels_in=config_model["model::channels_in"],
                 nlin=config_model["model::nlin"],
                 dropout=config_model["model::dropout"],
@@ -171,10 +182,10 @@ def generate_images(tune_config):
             )
             try:
                 model.load_state_dict(
-                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints"))
                 )
             except RuntimeError:
-                model = ConvNetLarge(
+                model = CNN_ARD(
                     channels_in=config_model["model::channels_in"],
                     nlin=config_model["model::nlin"],
                     dropout=0,
@@ -182,22 +193,22 @@ def generate_images(tune_config):
                 )
                 try:
                     model.load_state_dict(
-                        torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+                        torch.load(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints"))
                     )
                 except RuntimeError:
-                    model = ConvNetLarge(
+                    model = CNN_ARD(
                         channels_in=config_model["model::channels_in"],
                         nlin=config_model["model::nlin"],
                         dropout=0.5,
                         init_type=config_model["model::init_type"]
                     )
                     model.load_state_dict(
-                        torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+                        torch.load(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints"))
                     )
         
         else:
             # Define model and load in state
-            model = ConvNetSmall(
+            model = CNN_ARD(
                 channels_in=config_model["model::channels_in"],
                 nlin=config_model["model::nlin"],
                 dropout=config_model["model::dropout"],
@@ -205,18 +216,29 @@ def generate_images(tune_config):
             )
             try:
                 model.load_state_dict(
-                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
+                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints"))
                 )
             except RuntimeError:
-                model = ConvNetSmall(
+                model = CNN_ARD(
                     channels_in=config_model["model::channels_in"],
                     nlin=config_model["model::nlin"],
                     dropout=0,
                     init_type=config_model["model::init_type"]
                 )
-                model.load_state_dict(
-                    torch.load(os.path.join(checkpoint_path, path, "checkpoint_000050", "checkpoints"))
-                )
+                try:
+                    model.load_state_dict(
+                        torch.load(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints"))
+                    )
+                except RuntimeError:
+                    model = CNN_ARD(
+                        channels_in=config_model["model::channels_in"],
+                        nlin=config_model["model::nlin"],
+                        dropout=0.5,
+                        init_type=config_model["model::init_type"]
+                    )
+                    model.load_state_dict(
+                        torch.load(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints"))
+                    )
         model.to(config["device"])
 
         # Attack
@@ -259,6 +281,8 @@ def generate_images(tune_config):
         images = torch.cat((images, adv_images))
         labels = torch.cat((labels, true_labels))
 
+        print(f"Model {i+1} done")
+
     # Save entire dataset
     perturbed_dataset = TensorDataset(images, labels)
 
@@ -283,10 +307,10 @@ def generate_images(tune_config):
 
 def main():
     # ray init to limit memory and storage
-    cpus = 10
-    gpus = 0
+    cpus = 6
+    gpus = 1
 
-    cpus_per_trial = 10
+    cpus_per_trial = 3
     gpu_fraction = ((gpus*100) // (cpus/cpus_per_trial)) / 100
     resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpu_fraction}
 
@@ -299,9 +323,9 @@ def main():
 
     # Define search space (all experiment configurations)
     search_space = {
-        "dataset": tune.grid_search(["SVHN"]),
+        "dataset": tune.grid_search(["MNIST", "SVHN"]),
         "attack": tune.grid_search(["PGD", "FGSM"]),
-        "setup": tune.grid_search(["hyp-10-r", "hyp-10-f", "seed"]),
+        "setup": tune.grid_search(["hyp-10-f", "hyp-10-r", "seed"]),
         "eps": tune.grid_search([0.1, 0.2, 0.3, 0.4, 0.5]),
     }
 
