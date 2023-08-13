@@ -55,3 +55,6 @@ MANIFEST
 
 # Datasets
 .pt
+src/model_robustness/data/*
+src/model_robustness/attacks/.ipynb_checkpoints/*
+src/notebook_experimenting/*
