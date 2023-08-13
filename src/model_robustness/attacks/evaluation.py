@@ -230,7 +230,7 @@ def main():
 
     # Define search space (all experiment configurations)
     search_space = {
-        "dataset": tune.grid_search(["MNIST", "CIFAR10", "SVHN"]),
+        "dataset": tune.grid_search(["SVHN"]),
         "attack": tune.grid_search(["PGD", "FGSM"]),
         "setup": tune.grid_search(["hyp-10-r", "hyp-10-f", "seed"]),
         "eps": tune.grid_search([0.1, 0.2, 0.3, 0.4, 0.5]),
