@@ -58,3 +58,4 @@ MANIFEST
 src/model_robustness/data/*
 src/model_robustness/attacks/.ipynb_checkpoints/*
 src/notebook_experimenting/*
+src/model_robustness/plots/accuracy_boxplots/.ipynb_checkpoints/*
