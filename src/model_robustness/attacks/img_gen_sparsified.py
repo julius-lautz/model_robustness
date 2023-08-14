@@ -6,6 +6,7 @@ import random
 import json
 from pathlib import Path
 import numpy as np
+import pandas as pd
 
 from ray import tune, air
 import ray
@@ -18,7 +19,7 @@ from torch.utils.data.dataset import random_split
 
 from advertorch.attacks import LinfPGDAttack, GradientSignAttack
 
-from networks import CNN_ARD
+from networks import CNN_ARD, CNN3_ARD
 
 
 
@@ -96,34 +97,9 @@ def generate_images(tune_config):
         print("Model_list already existed")
 
     except FileNotFoundError:
-        # Only getting models from zoo that have no error
-        try:
-            zoo_model_list_path = os.path.join(data_root, config["dataset"])
-            with open(os.path.join(zoo_model_list_path, "all_models.txt"), "r") as items:
-                zoo_model_list = items.readlines()
 
-                for i, l in enumerate(zoo_model_list):
-                    zoo_model_list[i] = l.replace("\n", "")
-            
-            print("list with all models already exists")
-
-        
-        except FileNotFoundError:
-            print("getting all models without error from zoo")
-            zoo_model_list = []
-            # Iterate directory
-            for a, path in enumerate(os.listdir(checkpoint_path)):
-                # only append directories
-                if not os.path.isfile(os.path.join(checkpoint_path, path)):
-                    if os.path.exists(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints")):
-                        zoo_model_list.append(path)
-                if a % 100==0:
-                    print(f"iterated through {a} models")
-            
-            file = open(os.path.join(data_root, config["dataset"], "all_models.txt"), "w")
-            for item in zoo_model_list:
-                file.write(item + "\n")
-            file.close()
+        all_models_df = pd.read_csv(os.path.join(data_root, "clean_zoos", f"{config['dataset']}_{config['setup']}_clean_zoo.csv"))
+        zoo_model_list = all_models_df["path"].tolist()
 
         # Only take the top 50 models
         random.shuffle(zoo_model_list)
@@ -153,28 +129,16 @@ def generate_images(tune_config):
 
     # Iterate over the n_models models and generate imgs_per_model images for each one
     for i, path in enumerate(model_paths):
-        
-        # # Make sure the path to the model exists
-        # if os.path.exists(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints")):
-        #     pass
-        # else:
-        #     path = model_paths[i+1]
 
         # Read in config containing the paramters for the i-th model
         model_config_path = os.path.join(checkpoint_path, path, "params.json")
         config_model = json.load(open(model_config_path, ))
 
-        # # Some models don't have 50 checkpoints, so check that we always take the last available one
-        # checkpoints = []
-        # for p in os.listdir(os.path.join(checkpoint_path, path)):
-        #     if p.startswith("checkpoint"):
-        #         checkpoints.append(p)
-        # checkpoints.sort()
 
         # For CIFAR10 use large ConvNet, small ConvNet for everything else
         if config["dataset"] == "CIFAR10":
             # Define model and load in state
-            model = CNN_ARD(
+            model = CNN3_ARD(
                 channels_in=config_model["model::channels_in"],
                 nlin=config_model["model::nlin"],
                 dropout=config_model["model::dropout"],
@@ -185,7 +149,7 @@ def generate_images(tune_config):
                     torch.load(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints"))
                 )
             except RuntimeError:
-                model = CNN_ARD(
+                model = CNN3_ARD(
                     channels_in=config_model["model::channels_in"],
                     nlin=config_model["model::nlin"],
                     dropout=0,
@@ -196,7 +160,7 @@ def generate_images(tune_config):
                         torch.load(os.path.join(checkpoint_path, path, "checkpoint_000025", "checkpoints"))
                     )
                 except RuntimeError:
-                    model = CNN_ARD(
+                    model = CNN3_ARD(
                         channels_in=config_model["model::channels_in"],
                         nlin=config_model["model::nlin"],
                         dropout=0.5,
@@ -323,9 +287,9 @@ def main():
 
     # Define search space (all experiment configurations)
     search_space = {
-        "dataset": tune.grid_search(["MNIST", "SVHN"]),
+        "dataset": tune.grid_search(["MNIST", "SVHN", "CIFAR10"]),
         "attack": tune.grid_search(["PGD", "FGSM"]),
-        "setup": tune.grid_search(["hyp-10-f", "hyp-10-r", "seed"]),
+        "setup": tune.grid_search(["hyp-10-r", "hyp-10-f", "seed"]),
         "eps": tune.grid_search([0.1, 0.2, 0.3, 0.4, 0.5]),
     }
 

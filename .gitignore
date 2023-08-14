@@ -59,3 +59,5 @@ src/model_robustness/data/*
 src/model_robustness/attacks/.ipynb_checkpoints/*
 src/notebook_experimenting/*
 src/model_robustness/plots/accuracy_boxplots/.ipynb_checkpoints/*
+src/model_robustness/attacks/experimenting/.ipynb_checkpoints/clean_directory-checkpoint.ipynb
+src/model_robustness/attacks/experimenting/.ipynb_checkpoints/clean_sparsified_zoos-checkpoint.ipynb
