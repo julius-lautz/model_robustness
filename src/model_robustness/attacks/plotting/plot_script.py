@@ -51,9 +51,9 @@ for ds in datasets:
                 both_results["normal"] = eps_df["old_acc"]
                 both_results[f"eps_{e}"] = eps_df["new_acc"]
 
-            sns.boxplot(both_results, orient="h")
+            sns.displot(data=both_results[["normal", "eps_0.1"]], kde=True)
             plt.savefig(
-                os.path.join(result_root, f"accuracy_boxplots/{ds}_{attack}_{setup}_boxplot.png"),
+                os.path.join(result_root, f"accuracy_histplots/{ds}_{attack}_{setup}_histplot.png"),
                 bbox_inches="tight"
             )
             plt.clf()
