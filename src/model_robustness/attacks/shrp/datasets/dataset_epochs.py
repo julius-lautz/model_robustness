@@ -263,6 +263,9 @@ class ModelDatasetBaseEpochs(Dataset):
     def __len__(self):
         return len(self.data)
 
+    def __get_paths__(self, index):
+        return self.paths[paths]
+
     ### get_weights ##################################################################################################################################################################
     """
     def __get_weights__(self):

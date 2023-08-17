@@ -244,6 +244,9 @@ class ModelDatasetBase(Dataset):
             self.weights = torch.stack(self.data, dim=0)
         return self.weights
 
+    def __get_paths__(self, index):
+        return self.paths[paths]
+
 
     ## read properties from path ##############################################################################################################################################
     def read_properties(self, results_key_list, config_key_list, idx_offset=1):
