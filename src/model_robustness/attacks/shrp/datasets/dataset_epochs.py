@@ -263,9 +263,8 @@ class ModelDatasetBaseEpochs(Dataset):
     def __len__(self):
         return len(self.data)
 
-    def __get_paths__(self, index):
-        return self.paths[paths]
-
+    def __get_paths__(self):
+        return self.paths[index]
 
     ### get_weights ##################################################################################################################################################################
     """
@@ -519,4 +518,3 @@ def load_checkpoint(
 
     # retur
     return ddx, ldx, path, edx
-                                                                      

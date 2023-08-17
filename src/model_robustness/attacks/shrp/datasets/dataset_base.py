@@ -245,7 +245,7 @@ class ModelDatasetBase(Dataset):
         return self.weights
 
     def __get_paths__(self, index):
-        return self.paths[paths]
+        return self.paths[index]
 
 
     ## read properties from path ##############################################################################################################################################
