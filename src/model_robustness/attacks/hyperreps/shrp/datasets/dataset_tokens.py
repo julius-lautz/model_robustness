@@ -287,7 +287,7 @@ class DatasetTokens(ModelDatasetBaseEpochs):
         return self._len
 
     ### get_paths ##################################################################################################################################################################
-    def __get_paths__(self, index):
+    def get_paths(self, index):
         return super().__get_paths__(index)
 
     def standardize_data_checkpoints(self):
