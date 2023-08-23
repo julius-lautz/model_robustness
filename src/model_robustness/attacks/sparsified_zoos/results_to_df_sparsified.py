@@ -27,6 +27,11 @@ def return_names_for_path(dataset, setup):
 def add_results_to_df(tune_config):
 
     results_root = os.path.join(ROOT, "/netscratch2/jlautz/model_robustness/src/model_robustness/data/sparsified")
+
+    # Get all model names
+    all_models_df = pd.read_csv(os.path.join(results_root, "clean_zoos", f"{tune_config['dataset']}_{tune_config['setup']}_clean_zoo.csv"))
+    model_paths = all_models_df["path"].tolist()
+
     results_root = Path(
             os.path.join(results_root, tune_config["dataset"], tune_config["attack"], tune_config["setup"], f"eps_{tune_config['eps']}", "results")
         )
@@ -34,11 +39,6 @@ def add_results_to_df(tune_config):
     # path to model zoo 
     zoo_p = return_names_for_path(tune_config["dataset"], tune_config["setup"])
     parameter_path = os.path.join(ROOT, f"/ds2/model_zoos/zoos_sparsified/distillation/zoos/{tune_config['dataset']}/ARD/{zoo_p}")
-    
-
-    # Get all model names
-    all_models_df = pd.read_csv(os.path.join(data_root, "clean_zoos", f"{tune_config['dataset']}_{tune_config['setup']}_clean_zoo.csv"))
-    model_paths = all_models_df["path"].tolist()
 
     # Instantiate empty dataframe
     df = pd.DataFrame(columns=["name", "dataset", "attack", "eps", "dropout", 
