@@ -69,19 +69,31 @@ def add_results_to_df(tune_config):
         except KeyError:
             pass
 
-        # Old results
+        # # Old results
+        # result_model_path = os.path.join(parameter_path, path, "result.json")
+        # c = 0
+        # for line in open(result_model_path, "r"):
+        #     c += 1
+        #     if c == 50:
+        #         index = line.index("test_acc")
+        #         df.loc[i, "old_acc"] = eval(line[index+11:index+16])
+        #         index = line.index("test_loss")
+        #         try:
+        #             df.loc[i, "old_loss"] = eval(line[index+12:index+17])
+        #         except:
+        #             pass
+
         result_model_path = os.path.join(parameter_path, path, "result.json")
-        c = 0
-        for line in open(result_model_path, "r"):
-            c += 1
-            if c == 50:
-                index = line.index("test_acc")
-                df.loc[i, "old_acc"] = eval(line[index+11:index+16])
-                index = line.index("test_loss")
-                try:
-                    df.loc[i, "old_loss"] = eval(line[index+12:index+17])
-                except:
-                    pass
+        
+        for iter, line in enumerate(open(result_model_path, "r")):
+            if iter == 25:
+                aux_dict = json.loads(line)
+        
+        df.loc[i, "old_acc"] = aux_dict["test_acc"]
+        try:
+            df.loc[i, "old_loss"] = aux_dict["test_acc"]
+        except:
+            pass
 
         # New results
         results_path = os.path.join(results_root, path, "result.json")
