@@ -115,7 +115,7 @@ def evaluate(dataset, model, config_model):
     return loss_avg, acc_avg
 
 
-def get_model_w_state(type, ds, config_model, root_path, path, uniform_soup, device):
+def get_model_w_state(type, ds, config_model, uniform_soup, device):
 
     if type == "normal":
         if ds == "CIFAR10":
@@ -186,14 +186,20 @@ def main(args):
     args = parse_args(args)
     setup_logging(args.loglevel)
 
+    index_counter = 0
     for z in args.zoos.keys():
         for ds in args.zoos[z]:
             for s in args.setups:
 
+                if ds == "MNIST":
+                    continue
+                elif s != "seed":
+                    continue
+
                 # make distinction between resnet and normal
                 if z == "resnet" and s != "seed":
                     continue
-                
+
                 if z == "resnet":
 
                     _logger.info(f"[{z}][{ds}]")
@@ -211,9 +217,12 @@ def main(args):
                     model_list_path = args.model_list_paths[z][ds][s]
                     perturbed_data_path = args.perturbed_datasets[z][ds][s]
                     result_path = Path("../../data/all_results.csv")
+                
 
-                # Read in dataset
+                # Read in datasets
                 dataset = torch.load(data_path)["testset"]
+                valset = torch.load(data_path)["valset"]
+                perturbed_data = torch.load(perturbed_data_path)
 
                 # Read in new results
                 if z == "normal":
@@ -228,66 +237,98 @@ def main(args):
 
                 model_paths = df["name"].tolist()
 
-                # Creating empty result dataframe
-                results = pd.DataFrame(columns=["name", "normal_acc", "normal_acc_attack", "soup_acc", "soup_acc_attack"])
-
-                # Create model_soup
-                # Average the weights for the last 5 epochs
-                for i, path in enumerate(model_paths):
-
-                    # Get config and load model
-                    config_path_temp = os.path.join(ROOT, root_path, df[df.name == path].iloc[0, 0])
-                    config_temp = json.load(open(os.path.join(config_path_temp, "params.json"), ))
-
-                    # Get the paths for the last five checkpoints
+                # Rank models according to the decreasing validation accuracy
+                # Iterate through the model_paths and get their validation accuracy
+                ranked = pd.DataFrame(columns=["name", "val_acc", "last_checkpoint"])
+                for k, path in enumerate(model_paths):
+                    # take last checkpoint
                     checkpoints = []
                     for p in os.listdir(os.path.join(root_path, path)):
                         if p.startswith("checkpoint"):
                             checkpoints.append(p)
-                        checkpoints.sort()
-                    # Only take the last 5 checkpoints
-                    checkpoints = checkpoints[-5:]
+                    checkpoints.sort()
+                    for l, line in enumerate(open(os.path.join(root_path, path, "result.json"), "r")):
 
-                    for j, epoch in enumerate(checkpoints):
-                        
-                        aux_path = os.path.join(root_path, path, epoch, "checkpoints")
-                        state_dict = torch.load(aux_path)
+                        if l == len(checkpoints)-1:
+                            aux_dic = json.loads(line)
+                            ranked.loc[k, "name"] = path
+                            ranked.loc[k, "val_acc"] = aux_dic["validation_acc"]
+                            ranked.loc[k, "last_checkpoint"] = checkpoints[-1]
+                ranked = ranked.sort_values(by="val_acc", ascending=False).reset_index()
+                ranked_model_paths = ranked["name"].tolist()
+                last_checkpoints = ranked["last_checkpoint"].tolist()
 
-                        if j == 0:
-                            uniform_soup = {k: v * (1./(len(checkpoints))) for k, v in state_dict.items()}
+                # Creating empty result dataframe
+                results = pd.DataFrame(columns=["type", "ds", "setup", "normal_acc", "normal_acc_attack", "soup_acc", "soup_acc_attack"])
 
-                        else: 
-                            uniform_soup = {k: v * (1./(len(checkpoints))) + uniform_soup[k] for k, v in state_dict.items()}
+                # Create model_soup
+                # Take first model as first ingredient
+                greedy_soup_ingredients = [ranked_model_paths[0]]
+                # Load parameters
+                greedy_soup_params = torch.load(os.path.join(root_path, ranked_model_paths[0], last_checkpoints[0], "checkpoints"))
+                best_val_acc_so_far = ranked.loc[0, "val_acc"]
 
-                    model = get_model_w_state(z, ds, config_temp, root_path, path, uniform_soup, device)
+                # Iterate through all models and consider adding them to the greedy soup
+                for i, path in enumerate(ranked_model_paths):
+                    
+                    # Skip first model
+                    if i == 0:
+                        continue
+                    _logger.info(f"Testing model {i} of {len(ranked_model_paths)}")
 
-                    _logger.info(f"[{z}][{ds}][{s}] - Evaluate model soup for Model {i+1}/{len(model_paths)}.")
-                    # Evaluate Model Soup
-                    soup_loss, soup_acc = evaluate(dataset, model, config_temp)
+                    # Get config and load model
+                    config_path_temp = os.path.join(ROOT, root_path, path)
+                    config_temp = json.load(open(os.path.join(config_path_temp, "params.json"), ))
 
-                    # Getting perturbed dataset
-                    _logger.info(f"[{z}][{ds}][{s}] - Evaluate perturbed model soup for Model {i+1}/{len(model_paths)}.")
-                    perturbed_data = torch.load(perturbed_data_path)
-                    soup_loss_attack, soup_acc_attack = evaluate(perturbed_data, model, config_temp)
+                    new_ingredient_params = torch.load(os.path.join(root_path, path, last_checkpoints[i], "checkpoints"))
+                    num_ingredients = len(greedy_soup_ingredients)
+                    potential_greedy_soup_params = {
+                        k: greedy_soup_params[k].clone() * (num_ingredients / (num_ingredients + 1.)) +
+                        new_ingredient_params[k].clone() * (1. / (num_ingredients + 1))
+                        for k in new_ingredient_params
+                    }
 
-                    # Getting old acc and loss from df
-                    aux_df = df[df.name==path]
-                    normal_acc = aux_df["old_acc"].item()
-                    normal_acc_attack = aux_df["new_acc"].item()
+                    # Evaluate the potential greedy soup on the valset
+                    model = get_model_w_state(z, ds, config_temp, potential_greedy_soup_params, device)
+                    held_out_val_loss, held_out_val_acc = evaluate(valset, model, config_temp)
+                    _logger.info(f"Potential greedy soup val acc: {held_out_val_acc}, best so far: {best_val_acc_so_far}")
+                    if held_out_val_acc > best_val_acc_so_far:
+                        greedy_soup_ingredients.append(ranked_model_paths[i])
+                        best_val_acc_so_far = held_out_val_acc
+                        greedy_soup_params = potential_greedy_soup_params
+                        _logger.info(f"Adding to soup, new soup is {greedy_soup_ingredients}")
 
-                    results.loc[i, "name"] = path
-                    results.loc[i, "normal_acc"] = normal_acc
-                    results.loc[i, "normal_acc_attack"] = normal_acc_attack
-                    results.loc[i, "soup_acc"] = soup_acc
-                    results.loc[i, "soup_acc_attack"] = soup_acc_attack
+                # Evaluate soup on the testset before and after attack
+                best_model_config = json.load(open(os.path.join(ROOT, root_path, ranked_model_paths[0], "params.json"), ))
+                model = get_model_w_state(z, ds, best_model_config, greedy_soup_params, device)
 
-                    # if i % 50 == 0:
-                    #     print(f"Model {i+1}/{len(model_paths)} done.")
+                results.loc[index_counter, "z"] = z
+                results.loc[index_counter, "ds"] = ds
+                results.loc[index_counter, "setup"] = s
+                results.loc[index_counter, "normal_acc"] = df[df.name==ranked_model_paths[0]]["old_acc"].item()
+                results.loc[index_counter, "normal_acc_attack"] = df[df.name==ranked_model_paths[0]]["new_acc"].item()
 
-                    # print(f"MODEL SOUP {i+1}/{len(model_paths)}: New Accuracy = {soup_acc} ({old_acc}); \n After Attack Accuracy = {perturbed_acc}({old_attack_acc})")
+                _logger.info(f"[{z}][{ds}][{s}] - Evaluate greedy soup on normal dataset")
+                greedy_loss, greedy_acc = evaluate(dataset, model, best_model_config)
 
-                df_save_path = Path("/netscratch2/jlautz/model_robustness/src/model_robustness/results/soups")
-                results.to_csv(os.path.join(df_save_path, f"{z}_{ds}_{s}_df.csv"))
+                _logger.info(f"[{z}][{ds}][{s}] - Evaluate greedy soup on perturbed dataset")
+                greedy_loss_attack, greedy_acc_attack = evaluate(perturbed_data, model, best_model_config)
+
+                results.loc[index_counter, "soup_acc"] = greedy_acc
+                results.loc[index_counter, "soup_acc_attack"] = greedy_acc_attack
+
+                _logger.info(results.loc[index_counter, :])
+
+                index_counter += 1
+
+        #         break
+        #     break
+        # break
+    
+
+                    
+    df_save_path = Path("/netscratch2/jlautz/model_robustness/src/model_robustness/results/soups")
+    results.to_csv(os.path.join(df_save_path, f"greedy_soup_df.csv"))
 
 
 def run():

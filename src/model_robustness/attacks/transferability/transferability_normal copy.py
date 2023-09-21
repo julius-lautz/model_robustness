@@ -28,7 +28,7 @@ from torch.utils.data.dataset import random_split
 
 from advertorch.attacks import LinfPGDAttack, GradientSignAttack
 
-from model_robustness.attacks.networks import ConvNetLarge, ConvNetSmall
+from model_robustness.attacks.networks import ConvNetLarge, ConvNetSmall, ResNet18
 
 ROOT = Path("")
 
@@ -45,10 +45,17 @@ def setup_logging(logLevel):
 ################ CLI STUFF ################
 
 def parse_args(args):
-    parser = argparse.ArgumentParser(description="CIFAR10 experiments")
-    parser.add_argument("--zoo", type=str, default="CIFAR10")
-    parser.add_argument("--attack", type=str, default="FGSM")
-    parser.add_argument("--setup", type=str, default="fixed")
+    parser = configargparse.ArgParser(
+        config_file_parser_class=configargparse.YAMLConfigFileParser
+    )
+    parser.add_argument("-c", "--config", required=True, is_config_file=True, help="config file path")
+    parser.add_argument('--path_to_zoos', type=yaml.safe_load)
+    parser.add_argument('--path_to_zoo_results', type=yaml.safe_load)
+    parser.add_argument('--zoos', help='zoo to use', type=yaml.safe_load)
+    parser.add_argument('--setups', help='setups', action='append')
+    parser.add_argument('--model_list_paths', type=yaml.safe_load)
+    parser.add_argument('--perturbed_datasets', type=yaml.safe_load)
+
     parser.add_argument(
         "-v",
         "--verbose",
@@ -74,20 +81,11 @@ def trial_str_creator(trial):
     return f"{trial.config['experiment']}_setup"
 
 
-def load_zoo(zoo_name, setup):
-    
-    ROOT = Path("")
+def load_zoo(zoo_name, setup, args):
 
-    if setup == "fixed":
-        s = "fix"
-    elif setup == "random":
-        s = "rand"
-
-    checkpoint_path = ROOT.joinpath(f'/netscratch2/dtaskiran/zoos/{zoo_name}/large/tune_zoo_{zoo_name.lower()}_large_hyperparameter_10_{setup}_seeds')
-    _logger.debug(checkpoint_path)
-    data_root = ROOT.joinpath(f"/netscratch2/jlautz/model_robustness/src/model_robustness/data/{zoo_name}/large")
+    checkpoint_path = args.path_to_zoos["normal"][zoo_name][setup]
     data_path = checkpoint_path.joinpath("dataset.pt")
-    zoo_path = ROOT.joinpath(f"/netscratch2/dtaskiran/zoos/{zoo_name}/large/analysis_data_hyp_{s}.pt")
+    zoo_path = args.path_to_zoo_results["normal"][zoo_name][setup]
 
     dataset = torch.load(data_path)["testset"]
     zoo = torch.load(zoo_path)
@@ -135,6 +133,13 @@ def get_best_model_path(zoo):
 
 def load_model(best_model_path, checkpoint_path, config):
 
+    # Some models don't have 50 checkpoints, so check that we always take the last available one
+    checkpoints = []
+    for p in os.listdir(os.path.join(checkpoint_path, best_model_path)):
+        if p.startswith("checkpoint"):
+            checkpoints.append(p)
+    checkpoints.sort()
+
     model_config_path = os.path.join(checkpoint_path, best_model_path, "params.json")
     config_model = json.load(open(model_config_path, ))
 
@@ -147,7 +152,7 @@ def load_model(best_model_path, checkpoint_path, config):
 
     try:
         model.load_state_dict(
-            torch.load(os.path.join(checkpoint_path, best_model_path, "checkpoint_000050", "checkpoints"))
+            torch.load(os.path.join(checkpoint_path, best_model_path, checkpoints[-1], "checkpoints"))
         )
     except RuntimeError:
         model = ConvNetLarge(
@@ -158,7 +163,7 @@ def load_model(best_model_path, checkpoint_path, config):
         )
         try:
             model.load_state_dict(
-                torch.load(os.path.join(checkpoint_path, best_model_path, "checkpoint_000050", "checkpoints"))
+                torch.load(os.path.join(checkpoint_path, best_model_path, checkpoints[-1], "checkpoints"))
             )
         except RuntimeError:
             model = ConvNetLarge(
@@ -168,7 +173,7 @@ def load_model(best_model_path, checkpoint_path, config):
                 init_type=config_model["model::init_type"]
             )
             model.load_state_dict(
-                torch.load(os.path.join(checkpoint_path, best_model_path, "checkpoint_000050", "checkpoints"))
+                torch.load(os.path.join(checkpoint_path, best_model_path, checkpoints[-1], "checkpoints"))
             )
 
     model.to(config["device"])
@@ -434,8 +439,8 @@ def main(args):
     setup_logging(args.loglevel)
 
     config = {}
-    config["dataset"] = args.zoo
-    config["attack"] = args.attack
+    config["dataset"] = args.setup
+    config["attack"] = "PGD"
     config["setup"] = args.setup
     config["eps"] = 0.1
     config["nb_iter"] = 10
@@ -444,15 +449,16 @@ def main(args):
 
     # Get dataset + zoo
     _logger.info("Getting zoo")
-    dataset, zoo, checkpoint_path = load_zoo(config["dataset"], config["setup"])
+    dataset, zoo, checkpoint_path = load_zoo(config["dataset"], config["setup"], args)
 
     # Get the best performing model from zoo
     _logger.info("Getting best model from zoo")
     path_list, max_index, best_model_path = get_best_model_path(zoo)
 
-    # Delete max_index from path list
-    path_list_wo_max = path_list
-    #del path_list_wo_max[max_index]
+    # TODO: Do we need this?
+    # # Delete max_index from path list
+    # path_list_wo_max = path_list
+    # del path_list_wo_max[max_index]
 
     # Load best model
     _logger.info("Loading best model")
@@ -484,6 +490,8 @@ def main(args):
         "best_model_path": best_model_path,
         "checkpoint_path": checkpoint_path,
         "path_list": path_list_wo_max,
+        "dataset": tune.grid_search(["MNIST", "CIFAR10", "SVHN"]),
+        "setup": tune.grid_search(["hyp-10-r", "hyp-10-f", "seed"]),
         "experiment": tune.grid_search(["normal", "white_box", "black_box_1", "black_box_2", "black_box_4", "black_box_5"]), # no scen3, as the lr is the same
     }
 
@@ -501,7 +509,7 @@ def main(args):
             num_samples=1,
             trial_name_creator=trial_str_creator),
         run_config=air.RunConfig(
-            #storage_path="/netscratch2/jlautz/ray_results",
+            storage_path="/netscratch2/jlautz/ray_results",
             callbacks=[WandbLoggerCallback(
                 project="master_thesis",
                 api_key="7fe80de0b53b0ab265297295a37223f3e9cb1215",

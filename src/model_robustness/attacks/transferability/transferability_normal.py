@@ -11,14 +11,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from typing import Dict, List
+import yaml
 
 from ray import tune, air
 import ray
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.tune.logger import LoggerCallback
 
-import sys 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname("/netscratch2/jlautz/model_robustness/src/model_robustness/attacks/transferability"), '..')))
+# import sys 
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname("/netscratch2/jlautz/model_robustness/src/model_robustness/attacks/transferability"), '..')))
 
 import torch
 import torch.nn as nn
@@ -28,7 +29,7 @@ from torch.utils.data.dataset import random_split
 
 from advertorch.attacks import LinfPGDAttack, GradientSignAttack
 
-from model_robustness.attacks.networks import ConvNetLarge, ConvNetSmall
+from networks import ConvNetLarge, ConvNetSmall, ResNet18
 
 ROOT = Path("")
 
@@ -45,10 +46,17 @@ def setup_logging(logLevel):
 ################ CLI STUFF ################
 
 def parse_args(args):
-    parser = argparse.ArgumentParser(description="CIFAR10 experiments")
-    parser.add_argument("--zoo", type=str, default="CIFAR10")
-    parser.add_argument("--attack", type=str, default="FGSM")
-    parser.add_argument("--setup", type=str, default="fixed")
+    parser = configargparse.ArgParser(
+        config_file_parser_class=configargparse.YAMLConfigFileParser
+    )
+    parser.add_argument("-c", "--config", required=True, is_config_file=True, help="config file path")
+    parser.add_argument('--path_to_zoos', type=yaml.safe_load)
+    parser.add_argument('--path_to_zoo_results', type=yaml.safe_load)
+    parser.add_argument('--zoos', help='zoo to use', type=yaml.safe_load)
+    parser.add_argument('--setups', help='setups', action='append')
+    parser.add_argument('--model_list_paths', type=yaml.safe_load)
+    parser.add_argument('--perturbed_datasets', type=yaml.safe_load)
+
     parser.add_argument(
         "-v",
         "--verbose",
@@ -74,20 +82,11 @@ def trial_str_creator(trial):
     return f"{trial.config['experiment']}_setup"
 
 
-def load_zoo(zoo_name, setup):
-    
-    ROOT = Path("")
+def load_zoo(zoo_name, setup, args):
 
-    if setup == "fixed":
-        s = "fix"
-    elif setup == "random":
-        s = "rand"
-
-    checkpoint_path = ROOT.joinpath(f'/netscratch2/dtaskiran/zoos/{zoo_name}/large/tune_zoo_{zoo_name.lower()}_large_hyperparameter_10_{setup}_seeds')
-    _logger.debug(checkpoint_path)
-    data_root = ROOT.joinpath(f"/netscratch2/jlautz/model_robustness/src/model_robustness/data/{zoo_name}/large")
+    checkpoint_path = Path(args.path_to_zoos["normal"][zoo_name][setup])
     data_path = checkpoint_path.joinpath("dataset.pt")
-    zoo_path = ROOT.joinpath(f"/netscratch2/dtaskiran/zoos/{zoo_name}/large/analysis_data_hyp_{s}.pt")
+    zoo_path = args.path_to_zoo_results["normal"][zoo_name][setup]
 
     dataset = torch.load(data_path)["testset"]
     zoo = torch.load(zoo_path)
@@ -95,7 +94,7 @@ def load_zoo(zoo_name, setup):
     return dataset, zoo, checkpoint_path
 
 
-def get_best_model_path(zoo):
+def get_best_model_path(zoo, z, setup):
 
     # Get only the results from the 50th epoch for each model
     a = 0
@@ -122,8 +121,11 @@ def get_best_model_path(zoo):
     for index in index_list:
         acc_list.append(zoo["acc"][index])
 
-    # Get the index of max element
-    max_index = acc_list.index(max(acc_list))
+    if z == "SVHN" and setup == "hyp-10-r":
+        max_index = 4030
+    else:
+        # Get the index of max element
+        max_index = acc_list.index(max(acc_list))
 
     # Get the corresponding model name
     best_model_path = path_list[max_index]
@@ -135,40 +137,68 @@ def get_best_model_path(zoo):
 
 def load_model(best_model_path, checkpoint_path, config):
 
+    # Some models don't have 50 checkpoints, so check that we always take the last available one
+    checkpoints = []
+    for p in os.listdir(os.path.join(checkpoint_path, best_model_path)):
+        if p.startswith("checkpoint"):
+            checkpoints.append(p)
+    checkpoints.sort()
+
     model_config_path = os.path.join(checkpoint_path, best_model_path, "params.json")
     config_model = json.load(open(model_config_path, ))
 
-    model = ConvNetLarge(
-        channels_in=config_model["model::channels_in"],
-        nlin=config_model["model::nlin"],
-        dropout=config_model["model::dropout"],
-        init_type=config_model["model::init_type"]
-    )
-
-    try:
-        model.load_state_dict(
-            torch.load(os.path.join(checkpoint_path, best_model_path, "checkpoint_000050", "checkpoints"))
-        )
-    except RuntimeError:
+    if config["dataset"] == "CIFAR10":
         model = ConvNetLarge(
             channels_in=config_model["model::channels_in"],
             nlin=config_model["model::nlin"],
-            dropout=0,
+            dropout=config_model["model::dropout"],
             init_type=config_model["model::init_type"]
         )
         try:
             model.load_state_dict(
-                torch.load(os.path.join(checkpoint_path, best_model_path, "checkpoint_000050", "checkpoints"))
+                torch.load(os.path.join(checkpoint_path, best_model_path, checkpoints[-1], "checkpoints"))
             )
         except RuntimeError:
             model = ConvNetLarge(
                 channels_in=config_model["model::channels_in"],
                 nlin=config_model["model::nlin"],
-                dropout=0.5,
+                dropout=0,
+                init_type=config_model["model::init_type"]
+            )
+            try:
+                model.load_state_dict(
+                    torch.load(os.path.join(checkpoint_path, best_model_path, checkpoints[-1], "checkpoints"))
+                )
+            except RuntimeError:
+                model = ConvNetLarge(
+                    channels_in=config_model["model::channels_in"],
+                    nlin=config_model["model::nlin"],
+                    dropout=0.5,
+                    init_type=config_model["model::init_type"]
+                )
+                model.load_state_dict(
+                    torch.load(os.path.join(checkpoint_path, best_model_path, checkpoints[-1], "checkpoints"))
+                )
+    else:
+        model = ConvNetSmall(
+            channels_in=config_model["model::channels_in"],
+            nlin=config_model["model::nlin"],
+            dropout=config_model["model::dropout"],
+            init_type=config_model["model::init_type"]
+        )
+        try:
+            model.load_state_dict(
+                torch.load(os.path.join(checkpoint_path, best_model_path, checkpoints[-1], "checkpoints"))
+            )
+        except RuntimeError:
+            model = ConvNetSmall(
+                channels_in=config_model["model::channels_in"],
+                nlin=config_model["model::nlin"],
+                dropout=0,
                 init_type=config_model["model::init_type"]
             )
             model.load_state_dict(
-                torch.load(os.path.join(checkpoint_path, best_model_path, "checkpoint_000050", "checkpoints"))
+                torch.load(os.path.join(checkpoint_path, best_model_path, checkpoints[-1], "checkpoints"))
             )
 
     model.to(config["device"])
@@ -328,42 +358,72 @@ def black_box_evaluation(perturbed_data, scen, config, tune_config):
     total_acc, total_loss, n_models, loss_models = 0, 0, 0, 0
 
     for i, path in enumerate(scen):
-        print(f"SCENARIO: {tune_config['experiment']}, checking model {i+1} of {len(scen)}")
+        _logger.info(f"SCENARIO: {tune_config['experiment']}, checking model {i+1} of {len(scen)}")
+
+        # Some models don't have 50 checkpoints, so check that we always take the last available one
+        checkpoints = []
+        for p in os.listdir(os.path.join(tune_config["checkpoint_path"], path)):
+            if p.startswith("checkpoint"):
+                checkpoints.append(p)
+        checkpoints.sort()
+
         # Read in config containing params for the i-th model
         model_config_path = os.path.join(tune_config["checkpoint_path"], path, "params.json")
         config_model = json.load(open(model_config_path, ))
 
         # Define model and load in state
-        model = ConvNetLarge(
-            channels_in=config_model["model::channels_in"],
-            nlin=config_model["model::nlin"],
-            dropout=config_model["model::dropout"],
-            init_type=config_model["model::init_type"]
-        )
-        try:
-            model.load_state_dict(
-                torch.load(os.path.join(tune_config["checkpoint_path"], path, "checkpoint_000050", "checkpoints"))
-            )
-        except RuntimeError:
+        if config["dataset"] == "CIFAR10":
             model = ConvNetLarge(
                 channels_in=config_model["model::channels_in"],
                 nlin=config_model["model::nlin"],
-                dropout=0,
+                dropout=config_model["model::dropout"],
                 init_type=config_model["model::init_type"]
             )
             try:
                 model.load_state_dict(
-                    torch.load(os.path.join(tune_config["checkpoint_path"], path, "checkpoint_000050", "checkpoints"))
+                    torch.load(os.path.join(tune_config["checkpoint_path"], path, checkpoints[-1], "checkpoints"))
                 )
             except RuntimeError:
                 model = ConvNetLarge(
                     channels_in=config_model["model::channels_in"],
                     nlin=config_model["model::nlin"],
-                    dropout=0.5,
+                    dropout=0,
+                    init_type=config_model["model::init_type"]
+                )
+                try:
+                    model.load_state_dict(
+                        torch.load(os.path.join(tune_config["checkpoint_path"], path, checkpoints[-1], "checkpoints"))
+                    )
+                except RuntimeError:
+                    model = ConvNetLarge(
+                        channels_in=config_model["model::channels_in"],
+                        nlin=config_model["model::nlin"],
+                        dropout=0.5,
+                        init_type=config_model["model::init_type"]
+                    )
+                    model.load_state_dict(
+                        torch.load(os.path.join(tune_config["checkpoint_path"], path, checkpoints[-1], "checkpoints"))
+                    )
+        else:
+            model = ConvNetSmall(
+                channels_in=config_model["model::channels_in"],
+                nlin=config_model["model::nlin"],
+                dropout=config_model["model::dropout"],
+                init_type=config_model["model::init_type"]
+            )
+            try:
+                model.load_state_dict(
+                    torch.load(os.path.join(tune_config["checkpoint_path"], path, checkpoints[-1], "checkpoints"))
+                )
+            except RuntimeError:
+                model = ConvNetSmall(
+                    channels_in=config_model["model::channels_in"],
+                    nlin=config_model["model::nlin"],
+                    dropout=0,
                     init_type=config_model["model::init_type"]
                 )
                 model.load_state_dict(
-                    torch.load(os.path.join(tune_config["checkpoint_path"], path, "checkpoint_000050", "checkpoints"))
+                    torch.load(os.path.join(tune_config["checkpoint_path"], path, checkpoints[-1], "checkpoints"))
                 )
         model.to(config["device"])
 
@@ -433,43 +493,19 @@ def main(args):
     args=parse_args(args)
     setup_logging(args.loglevel)
 
+    saving_path = Path("/netscratch2/jlautz/model_robustness/src/model_robustness/results/transferability")
+
     config = {}
-    config["dataset"] = args.zoo
-    config["attack"] = args.attack
-    config["setup"] = args.setup
+    config["attack"] = "PGD"
     config["eps"] = 0.1
     config["nb_iter"] = 10
     config["eps_iter"] = config["eps"]/10
     config["device"] = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Get dataset + zoo
-    _logger.info("Getting zoo")
-    dataset, zoo, checkpoint_path = load_zoo(config["dataset"], config["setup"])
+    cpus = 6
+    gpus = 1
 
-    # Get the best performing model from zoo
-    _logger.info("Getting best model from zoo")
-    path_list, max_index, best_model_path = get_best_model_path(zoo)
-
-    # Delete max_index from path list
-    path_list_wo_max = path_list
-    #del path_list_wo_max[max_index]
-
-    # Load best model
-    _logger.info("Loading best model")
-    source_model, source_config = load_model(best_model_path, checkpoint_path, config)
-
-    # Create perturbed images
-    _logger.info("Attacking")
-    perturbed_data = attack(dataset, source_model, config)
-
-    # Getting the path lists for the black box scenarios
-    _logger.info("Getting the path lists for the black box scenarios")
-    all_scens = black_scenarios_path_lists(source_config, path_list, checkpoint_path)
-
-    cpus = 8
-    gpus = 0
-
-    cpus_per_trial = 8
+    cpus_per_trial = 6
     gpu_fraction = ((gpus*100) // (cpus/cpus_per_trial)) / 100
     resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpu_fraction}
 
@@ -480,38 +516,89 @@ def main(args):
 
     assert ray.is_initialized() == True
 
-    search_space = {
-        "best_model_path": best_model_path,
-        "checkpoint_path": checkpoint_path,
-        "path_list": path_list_wo_max,
-        "experiment": tune.grid_search(["normal", "white_box", "black_box_1", "black_box_2", "black_box_4", "black_box_5"]), # no scen3, as the lr is the same
-    }
+    # Instantiate dataframe to save results in
+    # df = pd.DataFrame(columns=[])
 
-    transferability_experiments_w_resources = tune.with_resources(transferability_experiments, resources_per_trial)
+    for ds in args.zoos["normal"]:
+        for setup in args.setups:
+            
+            # Seed zoos have no diversity in hyperparams
+            if setup == "seed":
+                continue
 
-    tuner = tune.Tuner(
-        tune.with_parameters(
-            transferability_experiments_w_resources, dataset=dataset,
-            perturbed_data=perturbed_data,
-            source_model=source_model,
-            source_config=source_config,
-            all_scens=all_scens,
-            config=config),
-        tune_config=tune.TuneConfig(
-            num_samples=1,
-            trial_name_creator=trial_str_creator),
-        run_config=air.RunConfig(
-            #storage_path="/netscratch2/jlautz/ray_results",
-            callbacks=[WandbLoggerCallback(
-                project="master_thesis",
-                api_key="7fe80de0b53b0ab265297295a37223f3e9cb1215",
-                #group="SVHN FGSM hyp-10-r"
-            )]
-        ),
-        param_space=search_space
-    )
-    results = tuner.fit()
+            if ds != "SVHN":
+                continue
+            elif setup != "hyp-10-r":
+                continue
 
+            config["dataset"] = ds
+            config["setup"] = setup
+
+            # Get dataset + zoo
+            _logger.info("Getting zoo")
+            dataset, zoo, checkpoint_path = load_zoo(config["dataset"], config["setup"], args)
+
+            # Get the best performing model from zoo
+            _logger.info("Getting best model from zoo")
+            path_list, max_index, best_model_path = get_best_model_path(zoo, ds, setup)
+
+            # TODO: Do we need this?
+            # Delete max_index from path list
+            path_list_wo_max = path_list
+            del path_list_wo_max[max_index]
+
+            # Load best model
+            _logger.info("Loading best model")
+            source_model, source_config = load_model(best_model_path, checkpoint_path, config)
+
+            with open((saving_path.joinpath(f"configs/{config['dataset']}_{config['setup']}_config.json")), "w") as f:
+                json.dump(source_config, f, default=str, indent=4)
+
+            # Create perturbed images
+            _logger.info("Attacking")
+            perturbed_data = attack(dataset, source_model, config)
+
+            # Getting the path lists for the black box scenarios
+            _logger.info("Getting the path lists for the black box scenarios")
+            all_scens = black_scenarios_path_lists(source_config, path_list, checkpoint_path)
+
+            search_space = {
+                "best_model_path": best_model_path,
+                "checkpoint_path": checkpoint_path,
+                "path_list": path_list_wo_max,
+                # "dataset": tune.grid_search(["MNIST", "CIFAR10", "SVHN"]),
+                # "setup": tune.grid_search(["hyp-10-r", "hyp-10-f", "seed"]),
+                "experiment": tune.grid_search(["normal", "white_box", "black_box_1", "black_box_2", "black_box_3", "black_box_4", "black_box_5"]), # no scen3, as the lr is the same
+            }
+
+            transferability_experiments_w_resources = tune.with_resources(transferability_experiments, resources_per_trial)
+
+            tuner = tune.Tuner(
+                tune.with_parameters(
+                    transferability_experiments_w_resources, dataset=dataset,
+                    perturbed_data=perturbed_data,
+                    source_model=source_model,
+                    source_config=source_config,
+                    all_scens=all_scens,
+                    config=config),
+                tune_config=tune.TuneConfig(
+                    num_samples=1,
+                    trial_name_creator=trial_str_creator),
+                run_config=air.RunConfig(
+                    #storage_path="/netscratch2/jlautz/ray_results",
+                    callbacks=[WandbLoggerCallback(
+                        project="master_thesis",
+                        api_key="7fe80de0b53b0ab265297295a37223f3e9cb1215",
+                        #group="SVHN FGSM hyp-10-r"
+                    )]
+                ),
+                param_space=search_space
+            )
+            results = tuner.fit()
+            result_grid = tuner.get_results()
+            results_df = result_grid.get_dataframe()
+            results_df.to_csv(saving_path.joinpath(f"dataframes/{config['dataset']}_{config['setup']}_df.csv"))
+            
     ray.shutdown()
 
 

@@ -1,4 +1,4 @@
-import configargparse
+import argparse
 import logging
 import sys
 import os
@@ -16,9 +16,6 @@ from ray import tune, air
 import ray
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.tune.logger import LoggerCallback
-
-import sys 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname("/netscratch2/jlautz/model_robustness/src/model_robustness/attacks/transferability"), '..')))
 
 import torch
 import torch.nn as nn

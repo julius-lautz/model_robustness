@@ -1,0 +1,93 @@
+zoos: 
+  "normal":
+    - MNIST
+    - CIFAR10
+    - SVHN
+  "resnet":
+    - CIFAR10
+    - CIFAR100
+    - TinyImageNet
+
+setups:
+  - hyp-10-f
+  - hyp-10-r
+  - seed
+
+path_to_zoos:
+    "normal":
+        "MNIST":
+          "hyp-10-f": "/ds2/model_zoos/zoos_v2/MNIST/tune_zoo_mnist_hyperparameter_10_fixed_seeds"
+          "hyp-10-r": "/ds2/model_zoos/zoos_v2/MNIST/tune_zoo_mnist_hyperparameter_10_random_seeds"
+          "seed": "/ds2/model_zoos/zoos_v2/MNIST/tune_zoo_mnist_uniform"
+        "CIFAR10":
+          "hyp-10-f": "/ds2/model_zoos/zoos_v2/CIFAR10/large/tune_zoo_cifar10_large_hyperparameter_10_fixed_seeds"
+          "hyp-10-r": "/ds2/model_zoos/zoos_v2/CIFAR10/large/tune_zoo_cifar10_large_hyperparameter_10_random_seeds"
+          "seed": "/ds2/model_zoos/zoos_v2/CIFAR10/large/tune_zoo_cifar10_uniform_large"
+        "SVHN":
+          "hyp-10-f": "/ds2/model_zoos/zoos_v2/SVHN/tune_zoo_svhn_hyperparameter_10_fixed_seeds"
+          "hyp-10-r": "/ds2/model_zoos/zoos_v2/SVHN/tune_zoo_svhn_hyperparameter_10_random_seeds"
+          "seed": "/ds2/model_zoos/zoos_v2/SVHN/tune_zoo_svhn_uniform"
+    "resnet":
+        "CIFAR10": "/ds2/model_zoos/zoos_resnet/zoos/CIFAR10/resnet19/kaiming_uniform/tune_zoo_cifar10_resnet18_kaiming_uniform"
+        "CIFAR100": "/ds2/model_zoos/zoos_resnet/zoos/CIFAR100/resnet18/kaiming_uniform/tune_zoo_cifar100_resnet18_kaiming_uniform"
+        "TinyImageNet": "/ds2/model_zoos/zoos_resnet/zoos/TinyImageNet/resnet18/kaiming_uniform/tune_zoo_tinyimagenet_resnet18_kaiming_uniform"
+
+
+model_list_paths:
+  "normal":
+    "MNIST":
+      "hyp-10-f": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/MNIST/PGD/hyp-10-f/model_list.txt"
+      "hyp-10-r": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/MNIST/PGD/hyp-10-r/model_list.txt"
+      "seed": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/MNIST/PGD/seed/model_list.txt"
+    "CIFAR10":
+      "hyp-10-f": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/CIFAR10/large/PGD/hyp-10-f/model_list.txt"
+      "hyp-10-r": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/CIFAR10/large/PGD/hyp-10-r/model_list.txt"
+      "seed": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/CIFAR10/large/PGD/seed/model_list.txt"
+    "SVHN":
+      "hyp-10-f": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/SVHN/PGD/hyp-10-f/model_list.txt"
+      "hyp-10-r": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/SVHN/PGD/hyp-10-r/model_list.txt"
+      "seed": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/SVHN/PGD/seed/model_list.txt"
+  "resnet":
+    "CIFAR10": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/resnet/CIFAR10/PGD/model_list.txt"
+    "CIFAR100": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/resnet/CIFAR100/PGD/model_list.txt"
+    "TinyImageNet": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/resnet/TinyImageNet/PGD/model_list.txt"
+
+
+perturbed_datasets:
+  "normal":
+    "MNIST":
+      "hyp-10-f": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/MNIST/PGD/hyp-10-f/eps_0.1/perturbed_dataset.pt"
+      "hyp-10-r": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/MNIST/PGD/hyp-10-r/eps_0.1/perturbed_dataset.pt"
+      "seed": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/MNIST/PGD/seed/eps_0.1/perturbed_dataset.pt"
+    "CIFAR10":
+      "hyp-10-f": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/CIFAR10/large/PGD/hyp-10-f/eps_0.1/perturbed_dataset.pt"
+      "hyp-10-r": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/CIFAR10/large/PGD/hyp-10-r/eps_0.1/perturbed_dataset.pt"
+      "seed": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/CIFAR10/large/PGD/seed/eps_0.1/perturbed_dataset.pt"
+    "SVHN":
+      "hyp-10-f": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/SVHN/PGD/hyp-10-f/eps_0.1/perturbed_dataset.pt"
+      "hyp-10-r": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/SVHN/PGD/hyp-10-r/eps_0.1/perturbed_dataset.pt"
+      "seed": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/SVHN/PGD/seed/eps_0.1/perturbed_dataset.pt"
+  "resnet":
+    "CIFAR10": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/resnet/CIFAR10/PGD/eps_0.1/perturbed_dataset.pt"
+    "CIFAR100": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/resnet/CIFAR100/PGD/eps_0.1/perturbed_dataset.pt"
+    "TinyImageNet": "/netscratch2/jlautz/model_robustness/src/model_robustness/data/resnet/TinyImageNet/PGD/eps_0.1/perturbed_dataset.pt"
+
+
+path_to_zoo_results:
+    "normal":
+        "MNIST":
+          "hyp-10-f": "/ds2/model_zoos/zoos_v2/MNIST/analysis_data_hyp_fix.pt"
+          "hyp-10-r": "/ds2/model_zoos/zoos_v2/MNIST/analysis_data_hyp_rand.pt"
+          "seed": "/ds2/model_zoos/zoos_v2/MNIST/analysis_data_seed.pt"
+        "CIFAR10":
+          "hyp-10-f": "/ds2/model_zoos/zoos_v2/CIFAR10/large/analysis_data_hyp_fix.pt"
+          "hyp-10-r": "/ds2/model_zoos/zoos_v2/CIFAR10/large/analysis_data_hyp_rand.pt"
+          "seed": "/ds2/model_zoos/zoos_v2/CIFAR10/large/analysis_data_seed.pt"
+        "SVHN":
+          "hyp-10-f": "/ds2/model_zoos/zoos_v2/SVHN/analysis_data_hyp_fix.pt"
+          "hyp-10-r": "/ds2/model_zoos/zoos_v2/SVHN/analysis_data_hyp_rand.pt"
+          "seed": "/ds2/model_zoos/zoos_v2/SVHN/analysis_data_seed.pt"
+    "resnet":
+        "CIFAR10": "/ds2/model_zoos/zoos_resnet/zoos/CIFAR10/resnet19/kaiming_uniform/analysis.pt"
+        "CIFAR100": "/ds2/model_zoos/zoos_resnet/zoos/CIFAR100/resnet18/kaiming_uniform/analysis.pt"
+        "TinyImageNet": "/ds2/model_zoos/zoos_resnet/zoos/TinyImageNet/resnet18/kaiming_uniform/analysis.pt"
