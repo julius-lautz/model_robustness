@@ -1,0 +1,27 @@
+{
+    "cuda": false,
+    "dataset::dump": "/netscratch/dtaskiran/zoos/SVHN/tune_zoo_svhn_uniform/dataset.pt",
+    "model::channels_in": 1,
+    "model::dropout": 0.0,
+    "model::init_type": "uniform",
+    "model::nlin": "tanh",
+    "model::o_dim": 4,
+    "model::type": "CNN",
+    "model::use_bias": false,
+    "optim::lr": 0.003,
+    "optim::optimizer": "adam",
+    "optim::wd": 0.0,
+    "seed": 476,
+    "training::batchsize": 10,
+    "training::checkpoint_dir": null,
+    "training::epochs_train": 50,
+    "training::idx_out": 500,
+    "training::output_epoch": 1,
+    "training::start_epoch": 1,
+    "training::val_epochs": 1,
+    "wandb": {
+        "api_key_file": "/netscratch/dtaskiran/wandb/wandb.key",
+        "log_config": false,
+        "project": "SVHN Uniform"
+    }
+}
