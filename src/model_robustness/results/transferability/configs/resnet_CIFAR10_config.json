@@ -1,0 +1,32 @@
+{
+    "cuda": true,
+    "dataset::dump": "/netscratch2/kschuerholt/code/versai/model_zoos/zoos/CIFAR10/resnet19/kaiming_uniform/tune_zoo_cifar10_resnet18_kaiming_uniform/dataset.pt",
+    "model::channels_in": 3,
+    "model::dropout": 0.0,
+    "model::init_type": "kaiming_uniform",
+    "model::nlin": "relu",
+    "model::o_dim": 10,
+    "model::type": "Resnet18",
+    "model::use_bias": false,
+    "optim::lr": 0.05,
+    "optim::momentum": 0.9,
+    "optim::optimizer": "sgd",
+    "optim::scheduler": "OneCycleLR",
+    "optim::wd": 0.0005,
+    "seed": 394,
+    "testloader::workers": 3,
+    "training::batchsize": 256,
+    "training::checkpoint_dir": null,
+    "training::dataloader": "normal",
+    "training::epochs_train": 50,
+    "training::idx_out": 500,
+    "training::loss": "nll",
+    "training::output_epoch": 1,
+    "training::start_epoch": 1,
+    "training::val_epochs": 1,
+    "wandb": {
+        "api_key_file": "/netscratch2/kschuerholt/wandb/wandb.key",
+        "log_config": false,
+        "project": "CIFAR10 Resnet18 kaiming-uniform"
+    }
+}
