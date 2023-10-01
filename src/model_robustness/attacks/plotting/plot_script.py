@@ -17,6 +17,7 @@ eps = [.1, .2, .3, .4, .5]
 # Define paths
 result_root = ROOT.joinpath("/netscratch2/jlautz/model_robustness/src/model_robustness/plots")
 df = pd.read_csv("/netscratch2/jlautz/model_robustness/src/model_robustness/data/sparsified/all_results_df.csv")
+df = df[df.old_acc>=0.2]
 
 
 # Big Loop
