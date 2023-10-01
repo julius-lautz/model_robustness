@@ -1,0 +1,11 @@
+,MNIST,scenarios
+0,0.984,normal
+1,0.2337,white_box
+2,0.1351,dropout_0.5
+3,0.9462,nlin_relu
+4,0.9709,nlin_gelu
+5,0.6681,nlin_sigmoid
+6,0.6022,init_type_kaiming_uniform
+7,0.7082,init_type_normal
+8,0.7051,init_type_uniform
+9,0.3999,optimizer_sgd

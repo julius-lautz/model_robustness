@@ -1,0 +1,11 @@
+,CIFAR10,scenarios
+0,0.668,normal
+1,0.1896,white_box
+2,0.2009,dropout_0.5
+3,0.2589,nlin_gelu
+4,0.2536,nlin_relu
+5,0.2766,nlin_sigmoid
+6,0.2874,init_type_uniform
+7,0.2821,init_type_normal
+8,0.2503,init_type_kaiming_uniform
+9,0.2306,optimizer_sgd

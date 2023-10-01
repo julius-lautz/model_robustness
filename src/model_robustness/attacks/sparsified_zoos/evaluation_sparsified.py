@@ -68,6 +68,21 @@ def evaluate_images(tune_config):
         model_config_path = os.path.join(old_result_path, path, "params.json")
         config_model = json.load(open(model_config_path, ))
 
+        checkpoints = []
+        for p in os.listdir(os.path.join(old_result_path, path)):
+            if p.startswith("checkpoint"):
+                checkpoints.append(p)
+            checkpoints.sort()
+        
+        best_acc = 0
+        index = None
+        for l, line in enumerate(open(os.path.join(old_result_path, path, "result.json"), "r")):
+            aux_dict = json.loads(line)
+            if aux_dict["test_acc"] > best_acc:
+                best_acc = aux_dict["test_acc"]
+                index = l
+        checkpoint = checkpoints[index]
+
     # For CIFAR10 use large ConvNet, small ConvNet for everything else
         if tune_config["dataset"] == "CIFAR10":
             # Define model and load in state
@@ -79,7 +94,7 @@ def evaluate_images(tune_config):
             )
             try:
                 model.load_state_dict(
-                    torch.load(os.path.join(old_result_path, path, "checkpoint_000025", "checkpoints"))
+                    torch.load(os.path.join(old_result_path, path, checkpoint, "checkpoints"))
                 )
             except RuntimeError:
                 model = CNN3_ARD(
@@ -90,7 +105,7 @@ def evaluate_images(tune_config):
                 )
                 try:
                     model.load_state_dict(
-                        torch.load(os.path.join(old_result_path, path, "checkpoint_000025", "checkpoints"))
+                        torch.load(os.path.join(old_result_path, path, checkpoint, "checkpoints"))
                     )
                 except RuntimeError:
                     model = CNN3_ARD(
@@ -100,7 +115,7 @@ def evaluate_images(tune_config):
                         init_type=config_model["model::init_type"]
                     )
                     model.load_state_dict(
-                        torch.load(os.path.join(old_result_path, path, "checkpoint_000025", "checkpoints"))
+                        torch.load(os.path.join(old_result_path, path, checkpoint, "checkpoints"))
                     )
         
         else:
@@ -113,7 +128,7 @@ def evaluate_images(tune_config):
             )
             try:
                 model.load_state_dict(
-                    torch.load(os.path.join(old_result_path, path, "checkpoint_000025", "checkpoints"))
+                    torch.load(os.path.join(old_result_path, path, checkpoint, "checkpoints"))
                 )
             except RuntimeError:
                 model = CNN_ARD(
@@ -124,7 +139,7 @@ def evaluate_images(tune_config):
                 )
                 try:
                     model.load_state_dict(
-                        torch.load(os.path.join(old_result_path, path, "checkpoint_000025", "checkpoints"))
+                        torch.load(os.path.join(old_result_path, path, checkpoint, "checkpoints"))
                     )
                 except RuntimeError:
                     model = CNN_ARD(
@@ -134,7 +149,7 @@ def evaluate_images(tune_config):
                         init_type=config_model["model::init_type"]
                     )
                     model.load_state_dict(
-                        torch.load(os.path.join(old_result_path, path, "checkpoint_000025", "checkpoints"))
+                        torch.load(os.path.join(old_result_path, path, checkpoint, "checkpoints"))
                     )
         model.to(device)
 
@@ -219,7 +234,7 @@ def main():
     # Define search space (all experiment configurations)
     search_space = {
         "dataset": tune.grid_search(["CIFAR10", "MNIST", "SVHN"]),
-        "attack": tune.grid_search(["PGD", "FGSM"]),
+        "attack": tune.grid_search(["PGD"]),
         "setup": tune.grid_search(["hyp-10-f", "hyp-10-r", "seed"]),
         "eps": tune.grid_search([0.1, 0.2, 0.3, 0.4, 0.5]),
     }
